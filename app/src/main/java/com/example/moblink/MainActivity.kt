@@ -115,13 +115,17 @@ class MainActivity : ComponentActivity() {
         val identify = Identify("00B46871-4053-40CE-8181-07A02F82887F", "Android", "1234")
         val message = MessageToServer(identify, null)
         val text = Gson().toJson(message, MessageToServer::class.java)
-        webSocket?.send(text)
+        send(text)
     }
 
     private fun handleMessageIdentified(message: Identified) {
     }
 
     private fun handleMessageRequest(request: MessageRequest) {
+    }
+
+    private fun send(text: String) {
+        webSocket?.send(text)
     }
 
     private fun requestNetwork(transportType: Int, type: String) {
