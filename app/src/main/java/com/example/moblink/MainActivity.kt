@@ -17,16 +17,45 @@ import androidx.compose.ui.graphics.Color
 import com.example.moblink.ui.theme.MoblinkTheme
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
-import kotlin.concurrent.thread
-import okhttp3.WebSocket
-import okhttp3.*
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
+import com.google.gson.Gson
+
+data class Result(val ok: Boolean)
+
+data class Authentication(val challenge: String, val salt: String)
+
+data class Hello(val apiVersion: String, val authentication: Authentication)
+
+data class Identified(val result: Result)
+
+data class StartTunnelRequest(val address: String, val port: Int)
+
+data class MessageRequest(val startTunnel: StartTunnelRequest?)
+
+data class MessageToClient(val hello: Hello?, val identified: Identified?, val request: MessageRequest?)
+
+data class StartTunnelResponseData(val port: Int)
+
+data class ResponseData(val startTunnel: StartTunnelResponseData?)
+
+data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
+
+data class Identify(val id: String, val name: String, val authentication: String)
+
+data class MessageToServer(val identify: Identify?, val response: MessageResponse?)
 
 class MainActivity : ComponentActivity() {
     private var webSocket: WebSocket? = null
+    private var streamerSocket: DatagramSocket? = null
+    private var destinationSocket: DatagramSocket? = null
+    private val streamerUrl = "ws://192.168.50.203:7777"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,7 +63,7 @@ class MainActivity : ComponentActivity() {
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, "Cellular")
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, "WiFi")
         val okHttpClient = OkHttpClient.Builder().pingInterval(30, TimeUnit.SECONDS).build()
-        val request = Request.Builder().url("ws://192.168.50.203:7777").build()
+        val request = Request.Builder().url(streamerUrl).build()
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i("Moblink","Websocket opened")
@@ -44,6 +73,7 @@ class MainActivity : ComponentActivity() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.i("Moblink","Websocket message received: $text")
                 super.onMessage(webSocket, text)
+                handleMessage(text)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -63,6 +93,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun handleMessage(text: String) {
+        try {
+            val message = Gson().fromJson(text, MessageToClient::class.java)
+            Log.i("Moblink", "Got: $message")
+            if (message.hello != null) {
+                handleMessageHello(message.hello)
+            } else if (message.identified != null) {
+                handleMessageIdentified(message.identified)
+            } else if (message.request != null) {
+                handleMessageRequest(message.request)
+            }
+        } catch (e: Exception) {
+            Log.i("Moblink", "Deserialize failed: $e")
+        }
+    }
+
+    private fun handleMessageHello(hello: Hello) {
+        val identify = Identify("00B46871-4053-40CE-8181-07A02F82887F", "Android", "1234")
+        val message = MessageToServer(identify, null)
+        val text = Gson().toJson(message, MessageToServer::class.java)
+        webSocket?.send(text)
+    }
+
+    private fun handleMessageIdentified(message: Identified) {
+    }
+
+    private fun handleMessageRequest(request: MessageRequest) {
     }
 
     private fun requestNetwork(transportType: Int, type: String) {
