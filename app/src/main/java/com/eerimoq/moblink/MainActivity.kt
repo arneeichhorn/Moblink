@@ -1,4 +1,4 @@
-package com.example.moblink
+package com.eerimoq.moblink
 
 import android.content.Context
 import android.net.ConnectivityManager
@@ -30,7 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
-import com.example.moblink.ui.theme.MoblinkTheme
+import com.eerimoq.moblink.ui.theme.MoblinkTheme
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response

@@ -1,4 +1,4 @@
-package com.example.moblink.ui.theme
+package com.eerimoq.moblink.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

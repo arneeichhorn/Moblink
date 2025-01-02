@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.moblink"
+    namespace = "com.eerimoq.moblink"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.moblink"
+        applicationId = "com.eerimoq.moblink"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

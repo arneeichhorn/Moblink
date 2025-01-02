@@ -1,4 +1,4 @@
-package com.example.moblink
+package com.eerimoq.moblink
 
 import org.junit.Test
 
