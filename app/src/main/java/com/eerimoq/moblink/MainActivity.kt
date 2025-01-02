@@ -140,6 +140,9 @@ class MainActivity : ComponentActivity() {
     private fun start(streamerUrl: String, password: String) {
         handler?.post {
             Log.i("Moblink", "Start")
+            if (started) {
+                return@post
+            }
             started = true
             this.streamerUrl = streamerUrl
             this.password = password
@@ -150,12 +153,16 @@ class MainActivity : ComponentActivity() {
     private fun stop() {
         handler?.post {
             Log.i("Moblink", "Stop")
+            if (!started) {
+                return@post
+            }
             started = false
             stopInternal()
         }
     }
 
     private fun startInternal() {
+        stopInternal()
         if (!started) {
             return
         }
