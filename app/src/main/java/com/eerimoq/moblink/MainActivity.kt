@@ -43,6 +43,7 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -82,9 +83,12 @@ class MainActivity : ComponentActivity() {
     private var destinationSocket: DatagramSocket? = null
     private var streamerUrl = ""
     private var password = ""
+    private var name = "Relay"
+    private var relayId = ""
     private val handlerThread = HandlerThread("Something")
     private var handler: Handler? = null
-    private val okHttpClient = OkHttpClient.Builder().pingInterval(30, TimeUnit.SECONDS).build()
+    private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
+    private var started = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,9 +99,14 @@ class MainActivity : ComponentActivity() {
                 Main(
                     streamerUrl,
                     password,
+                    name,
                     { streamerUrl: String, password: String -> start(streamerUrl, password) },
                     { stop() },
-                    {streamerUrl: String, password: String -> saveSettings(streamerUrl, password) }
+                    {streamerUrl: String, password: String, name: String ->
+                        this.streamerUrl = streamerUrl
+                        this.password = password
+                        this.name = name
+                        saveSettings(streamerUrl, password, relayId, name) }
                 )
             }
         }
@@ -109,70 +118,97 @@ class MainActivity : ComponentActivity() {
         handlerThread.start()
         handler = Handler(handlerThread.looper)
         val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        streamerUrl = settings.getString("streamerUrl", "ws://192.168.0.34:7777") ?: ""
-        password = settings.getString("password", "1234") ?: ""
+        streamerUrl = settings.getString("streamerUrl", "ws://192.168.0.34:7777") ?: "ws://192.168.0.34:7777"
+        password = settings.getString("password", "1234") ?: "1234"
+        val uuid = UUID.randomUUID().toString()
+        relayId = settings.getString("relayId", uuid) ?: uuid
+        name = settings.getString("name", "Relay") ?: "Relay"
+        Log.i("Moblink", "Settings: $streamerUrl $relayId $name")
+        saveSettings(streamerUrl, password, relayId, name)
     }
 
-    private fun saveSettings(streamerUrl: String, password: String) {
-        Log.i("Moblink", "Saving settings")
+    private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
         val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
         val editor = settings.edit()
         editor.putString("streamerUrl", streamerUrl)
         editor.putString("password", password)
+        editor.putString("relayId", relayId)
+        editor.putString("name", name)
         editor.apply()
     }
 
     private fun start(streamerUrl: String, password: String) {
         handler?.post {
             Log.i("Moblink", "Start")
+            started = true
             this.streamerUrl = streamerUrl
             this.password = password
-            try {
-                val request = Request.Builder().url(streamerUrl).build()
-                webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
-                    override fun onOpen(webSocket: WebSocket, response: Response) {
-                        super.onOpen(webSocket, response)
-                        handler?.post {
-                            Log.i("Moblink","Websocket opened")
-                        }
-                    }
-
-                    override fun onMessage(webSocket: WebSocket, text: String) {
-                        super.onMessage(webSocket, text)
-                        handler?.post {
-                            Log.i("Moblink", "Websocket message received: $text")
-                            handleMessage(text)
-                        }
-                    }
-
-                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        super.onClosed(webSocket, code, reason)
-                        handler?.post {
-                            Log.i("Moblink","Websocket closed $reason (code $code)")
-                        }
-                    }
-
-                    override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                        super.onFailure(webSocket, t, response)
-                        handler?.post {
-                            Log.i("Moblink","Websocket failure $t")
-                        }
-                    }
-                })
-            } catch (e: Exception) {
-                Log.i("Moblink", "Failed to build URL: $e")
-                return@post
-            }
+            startInternal()
         }
     }
 
     private fun stop() {
         handler?.post {
             Log.i("Moblink", "Stop")
-            webSocket?.cancel()
-            streamerSocket?.close()
-            destinationSocket?.close()
+            started = false
+            stopInternal()
         }
+    }
+
+    private fun startInternal() {
+        if (!started) {
+            return
+        }
+        try {
+            val request = Request.Builder().url(streamerUrl).build()
+            webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    super.onOpen(webSocket, response)
+                    handler?.post {
+                        Log.i("Moblink","Websocket opened")
+                    }
+                }
+
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    super.onMessage(webSocket, text)
+                    handler?.post {
+                        Log.i("Moblink", "Websocket message received: $text")
+                        handleMessage(text)
+                    }
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    super.onClosed(webSocket, code, reason)
+                    handler?.post {
+                        Log.i("Moblink","Websocket closed $reason (code $code)")
+                        reconnectSoon()
+                    }
+                }
+
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    super.onFailure(webSocket, t, response)
+                    handler?.post {
+                        Log.i("Moblink", "Websocket failure $t")
+                        reconnectSoon()
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            Log.i("Moblink", "Failed to build URL: $e")
+        }
+    }
+
+    private fun stopInternal() {
+        webSocket?.cancel()
+        streamerSocket?.close()
+        destinationSocket?.close()
+    }
+
+    private fun reconnectSoon() {
+        stopInternal()
+        handler?.postDelayed({
+            startInternal()
+        }, 5000)
     }
 
     private fun handleMessage(text: String) {
@@ -199,7 +235,7 @@ class MainActivity : ComponentActivity() {
         sha256.reset()
         hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
         val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
-        val identify = Identify("00B46871-4053-40CE-8181-07A02F82887F", "Android", authentication)
+        val identify = Identify(relayId, name, authentication)
         val message = MessageToServer(identify, null)
         val text = Gson().toJson(message, MessageToServer::class.java)
         send(text)
@@ -355,11 +391,13 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Main(streamerUrl: String,
          password: String,
+         name: String,
          onStart: (streamerUrl: String, password: String) -> Unit,
          onStop: () -> Unit,
-         saveSettings: (streamerUrl: String, password: String) -> Unit) {
+         saveSettings: (streamerUrl: String, password: String, name: String) -> Unit) {
     var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
     var passwordInput by remember { mutableStateOf(password) }
+    var nameInput by remember { mutableStateOf(name) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -371,7 +409,7 @@ fun Main(streamerUrl: String,
             value = streamerUrlInput,
             onValueChange = {
                 streamerUrlInput = it
-                saveSettings(streamerUrlInput, passwordInput)
+                saveSettings(streamerUrlInput, passwordInput, nameInput)
             },
             label = { Text("Streamer URL") }
         )
@@ -379,9 +417,17 @@ fun Main(streamerUrl: String,
             value = passwordInput,
             onValueChange = {
                 passwordInput = it
-                saveSettings(streamerUrlInput, passwordInput)
+                saveSettings(streamerUrlInput, passwordInput, nameInput)
             },
             label = { Text("Password") }
+        )
+        OutlinedTextField(
+            value = nameInput,
+            onValueChange = {
+                nameInput = it
+                saveSettings(streamerUrlInput, passwordInput, nameInput)
+            },
+            label = { Text("Name") }
         )
         Row(modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly) {
