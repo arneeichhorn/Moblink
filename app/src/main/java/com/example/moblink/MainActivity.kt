@@ -9,6 +9,7 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -41,7 +42,9 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import com.google.gson.Gson
+import okio.ByteString.Companion.encodeUtf8
 import okio.IOException
+import java.security.MessageDigest
 
 data class Empty(val dummy: Boolean?)
 
@@ -55,7 +58,9 @@ data class Identified(val result: Result)
 
 data class StartTunnelRequest(val address: String, val port: Int)
 
-data class MessageRequest(val id: Int, val startTunnel: StartTunnelRequest?)
+data class MessageRequestData(val startTunnel: StartTunnelRequest?)
+
+data class MessageRequest(val id: Int, val data: MessageRequestData)
 
 data class MessageToClient(val hello: Hello?, val identified: Identified?, val request: MessageRequest?)
 
@@ -75,7 +80,7 @@ class MainActivity : ComponentActivity() {
     private var cellularNetwork: Network? = null
     private var streamerSocket: DatagramSocket? = null
     private var destinationSocket: DatagramSocket? = null
-    private var streamerUrl = "ws://192.168.50.203:7777"
+    private var streamerUrl = ""
     private var password = ""
     private val handlerThread = HandlerThread("Something")
     private var handler: Handler? = null
@@ -104,7 +109,7 @@ class MainActivity : ComponentActivity() {
 
     private fun start(streamerUrl: String, password: String) {
         handler?.post {
-            Log.i("Moblink", "Starting")
+            Log.i("Moblink", "Start")
             this.streamerUrl = streamerUrl
             this.password = password
             try {
@@ -148,7 +153,7 @@ class MainActivity : ComponentActivity() {
 
     private fun stop() {
         handler?.post {
-            Log.i("Moblink", "Stopping")
+            Log.i("Moblink", "Stop")
             webSocket?.cancel()
             streamerSocket?.close()
             destinationSocket?.close()
@@ -172,7 +177,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleMessageHello(hello: Hello) {
-        val identify = Identify("00B46871-4053-40CE-8181-07A02F82887F", "Android", "1234")
+        var concatenated = "$password${hello.authentication.salt}"
+        val sha256 = MessageDigest.getInstance("SHA-256")
+        sha256.reset()
+        var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
+        concatenated = "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
+        sha256.reset()
+        hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
+        val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
+        val identify = Identify("00B46871-4053-40CE-8181-07A02F82887F", "Android", authentication)
         val message = MessageToServer(identify, null)
         val text = Gson().toJson(message, MessageToServer::class.java)
         send(text)
@@ -182,16 +195,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleMessageRequest(request: MessageRequest) {
-        if (request.startTunnel != null) {
-            handleMessageStartTunnelRequest(request.id, request.startTunnel)
+        if (request.data.startTunnel != null) {
+            handleMessageStartTunnelRequest(request.id, request.data.startTunnel)
         }
     }
 
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
-        if (wiFiNetwork == null || cellularNetwork == null) {
-            Log.i("Moblink", "Networks not ready")
-            return
-        }
         if (!setupStreamerSocket()) {
             return
         }
@@ -202,7 +211,7 @@ class MainActivity : ComponentActivity() {
         startStreamerReceiver(streamerSocket!!, destinationSocket!!, InetAddress.getByName(startTunnel.address), startTunnel.port)
         val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort))
         val response = MessageResponse(id, Result(Empty(true), null), data)
-        send(Gson().toJson(response))
+        send(Gson().toJson(MessageToServer(null, response)))
     }
 
     private fun setupStreamerSocket(): Boolean {
@@ -334,8 +343,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Main(onStart: (streamerUrl: String, password: String) -> Unit, onStop: () -> Unit) {
     // TODO: Should be stored persistently.
-    var streamerUrl by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var streamerUrl by rememberSaveable { mutableStateOf("ws://192.168.50.203:7777") }
+    var password by rememberSaveable { mutableStateOf("M7oA0PWx8zihStRvaUFE") }
 
     Column(
         modifier = Modifier.fillMaxSize(),
