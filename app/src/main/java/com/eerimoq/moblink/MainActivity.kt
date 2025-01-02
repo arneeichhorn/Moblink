@@ -32,13 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 import com.google.gson.Gson
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString.Companion.encodeUtf8
-import okio.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -46,6 +39,13 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import okio.ByteString.Companion.encodeUtf8
+import okio.IOException
 
 data class Empty(val dummy: Boolean?)
 
@@ -63,7 +63,11 @@ data class MessageRequestData(val startTunnel: StartTunnelRequest?)
 
 data class MessageRequest(val id: Int, val data: MessageRequestData)
 
-data class MessageToClient(val hello: Hello?, val identified: Identified?, val request: MessageRequest?)
+data class MessageToClient(
+    val hello: Hello?,
+    val identified: Identified?,
+    val request: MessageRequest?,
+)
 
 data class StartTunnelResponseData(val port: Int)
 
@@ -89,6 +93,7 @@ class MainActivity : ComponentActivity() {
     private var handler: Handler? = null
     private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var started = false
+    private var version = "?"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,13 +105,15 @@ class MainActivity : ComponentActivity() {
                     streamerUrl,
                     password,
                     name,
+                    version,
                     { streamerUrl: String, password: String -> start(streamerUrl, password) },
                     { stop() },
-                    {streamerUrl: String, password: String, name: String ->
+                    { streamerUrl: String, password: String, name: String ->
                         this.streamerUrl = streamerUrl
                         this.password = password
                         this.name = name
-                        saveSettings(streamerUrl, password, relayId, name) }
+                        saveSettings(streamerUrl, password, relayId, name)
+                    },
                 )
             }
         }
@@ -118,13 +125,16 @@ class MainActivity : ComponentActivity() {
         handlerThread.start()
         handler = Handler(handlerThread.looper)
         val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        streamerUrl = settings.getString("streamerUrl", "ws://192.168.0.34:7777") ?: "ws://192.168.0.34:7777"
-        password = settings.getString("password", "1234") ?: "1234"
+        streamerUrl = settings.getString("streamerUrl", "") ?: ""
+        password = settings.getString("password", "") ?: ""
         val uuid = UUID.randomUUID().toString()
         relayId = settings.getString("relayId", uuid) ?: uuid
         name = settings.getString("name", "Relay") ?: "Relay"
-        Log.i("Moblink", "Settings: $streamerUrl $relayId $name")
         saveSettings(streamerUrl, password, relayId, name)
+        try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            version = packageInfo.versionName
+        } catch (e: Exception) {}
     }
 
     private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
@@ -168,44 +178,53 @@ class MainActivity : ComponentActivity() {
         }
         try {
             val request = Request.Builder().url(streamerUrl).build()
-            webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    super.onOpen(webSocket, response)
-                    handler?.post {
-                        Log.i("Moblink","Websocket opened")
-                    }
-                }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    super.onMessage(webSocket, text)
-                    handler?.post {
-                        if (webSocket === getWebSocket()) {
-                            Log.i("Moblink", "Websocket message received: $text")
-                            handleMessage(text)
+            webSocket =
+                okHttpClient.newWebSocket(
+                    request,
+                    object : WebSocketListener() {
+                        override fun onOpen(webSocket: WebSocket, response: Response) {
+                            super.onOpen(webSocket, response)
+                            handler?.post { Log.i("Moblink", "Websocket opened") }
                         }
-                    }
-                }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    super.onClosed(webSocket, code, reason)
-                    handler?.post {
-                        if (webSocket === getWebSocket()) {
-                            Log.i("Moblink","Websocket closed $reason (code $code)")
-                            reconnectSoon()
+                        override fun onMessage(webSocket: WebSocket, text: String) {
+                            super.onMessage(webSocket, text)
+                            handler?.post {
+                                if (webSocket === getWebSocket()) {
+                                    Log.i("Moblink", "Websocket message received: $text")
+                                    handleMessage(text)
+                                }
+                            }
                         }
-                    }
-                }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    super.onFailure(webSocket, t, response)
-                    handler?.post {
-                        if (webSocket === getWebSocket()) {
-                            Log.i("Moblink", "Websocket failure $t $webSocket ${getWebSocket()}")
-                            reconnectSoon()
+                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                            super.onClosed(webSocket, code, reason)
+                            handler?.post {
+                                if (webSocket === getWebSocket()) {
+                                    Log.i("Moblink", "Websocket closed $reason (code $code)")
+                                    reconnectSoon()
+                                }
+                            }
                         }
-                    }
-                }
-            })
+
+                        override fun onFailure(
+                            webSocket: WebSocket,
+                            t: Throwable,
+                            response: Response?,
+                        ) {
+                            super.onFailure(webSocket, t, response)
+                            handler?.post {
+                                if (webSocket === getWebSocket()) {
+                                    Log.i(
+                                        "Moblink",
+                                        "Websocket failure $t $webSocket ${getWebSocket()}",
+                                    )
+                                    reconnectSoon()
+                                }
+                            }
+                        }
+                    },
+                )
         } catch (e: Exception) {
             Log.i("Moblink", "Failed to build URL: $e")
         }
@@ -224,10 +243,13 @@ class MainActivity : ComponentActivity() {
     private fun reconnectSoon() {
         Log.i("Moblink", "Reconnect soon")
         stopInternal()
-        handler?.postDelayed({
-            Log.i("Moblink", "Reconnect")
-            startInternal()
-        }, 5000)
+        handler?.postDelayed(
+            {
+                Log.i("Moblink", "Reconnect")
+                startInternal()
+            },
+            5000,
+        )
     }
 
     private fun handleMessage(text: String) {
@@ -250,7 +272,8 @@ class MainActivity : ComponentActivity() {
         val sha256 = MessageDigest.getInstance("SHA-256")
         sha256.reset()
         var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
-        concatenated = "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
+        concatenated =
+            "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
         sha256.reset()
         hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
         val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
@@ -260,8 +283,7 @@ class MainActivity : ComponentActivity() {
         send(text)
     }
 
-    private fun handleMessageIdentified(message: Identified) {
-    }
+    private fun handleMessageIdentified(message: Identified) {}
 
     private fun handleMessageRequest(request: MessageRequest) {
         if (request.data.startTunnel != null) {
@@ -277,7 +299,12 @@ class MainActivity : ComponentActivity() {
             return
         }
         Log.i("Moblink", "Port: ${streamerSocket!!.localPort}")
-        startStreamerReceiver(streamerSocket!!, destinationSocket!!, InetAddress.getByName(startTunnel.address), startTunnel.port)
+        startStreamerReceiver(
+            streamerSocket!!,
+            destinationSocket!!,
+            InetAddress.getByName(startTunnel.address),
+            startTunnel.port,
+        )
         val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort))
         val response = MessageResponse(id, Result(Empty(true), null), data)
         send(Gson().toJson(MessageToServer(null, response)))
@@ -305,10 +332,12 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun startStreamerReceiver(streamerSocket: DatagramSocket,
-                                      destinationSocket: DatagramSocket,
-                                      destinationAddress: InetAddress,
-                                      destinationPort: Int) {
+    private fun startStreamerReceiver(
+        streamerSocket: DatagramSocket,
+        destinationSocket: DatagramSocket,
+        destinationAddress: InetAddress,
+        destinationPort: Int,
+    ) {
         thread {
             var destinationReceiverCreated = false
             val buffer = ByteArray(2048)
@@ -320,7 +349,12 @@ class MainActivity : ComponentActivity() {
                     break
                 }
                 if (!destinationReceiverCreated) {
-                    startDestinationReceiver(streamerSocket, destinationSocket, packet.address, packet.port)
+                    startDestinationReceiver(
+                        streamerSocket,
+                        destinationSocket,
+                        packet.address,
+                        packet.port,
+                    )
                     destinationReceiverCreated = true
                 }
                 packet.address = destinationAddress
@@ -330,10 +364,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startDestinationReceiver(streamerSocket: DatagramSocket,
-                                         destinationSocket: DatagramSocket,
-                                         streamerAddress: InetAddress,
-                                         streamerPort: Int) {
+    private fun startDestinationReceiver(
+        streamerSocket: DatagramSocket,
+        destinationSocket: DatagramSocket,
+        streamerAddress: InetAddress,
+        streamerPort: Int,
+    ) {
         thread {
             val buffer = ByteArray(2048)
             val packet = DatagramPacket(buffer, buffer.size)
@@ -355,40 +391,48 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestNetwork(transportType: Int, type: String) {
-        val networkRequest = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addTransportType(transportType)
-            .build()
-        val networkCallback = object : NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                super.onAvailable(network)
-                handler?.post {
-                    Log.i("Moblink", "$type available")
-                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                        cellularNetwork = network
-                    } else {
-                        wiFiNetwork = network
+        val networkRequest =
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addTransportType(transportType)
+                .build()
+        val networkCallback =
+            object : NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    super.onAvailable(network)
+                    handler?.post {
+                        Log.i("Moblink", "$type available")
+                        if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
+                            cellularNetwork = network
+                        } else {
+                            wiFiNetwork = network
+                        }
                     }
                 }
-            }
 
-            override fun onLost(network: Network) {
-                super.onLost(network)
-                handler?.post {
-                    Log.i("Moblink", "$type lost")
-                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                        cellularNetwork = null
-                    } else {
-                        wiFiNetwork = null
+                override fun onLost(network: Network) {
+                    super.onLost(network)
+                    handler?.post {
+                        Log.i("Moblink", "$type lost")
+                        if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
+                            cellularNetwork = null
+                        } else {
+                            wiFiNetwork = null
+                        }
                     }
                 }
             }
-        }
-        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager.requestNetwork(networkRequest, networkCallback)
     }
 
-    private fun sendDatagramOverNetwork(network: Network, host: String, port: Int, message: String) {
+    private fun sendDatagramOverNetwork(
+        network: Network,
+        host: String,
+        port: Int,
+        message: String,
+    ) {
         thread {
             val socket = DatagramSocket()
             network.bindSocket(socket)
@@ -408,12 +452,15 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Main(streamerUrl: String,
-         password: String,
-         name: String,
-         onStart: (streamerUrl: String, password: String) -> Unit,
-         onStop: () -> Unit,
-         saveSettings: (streamerUrl: String, password: String, name: String) -> Unit) {
+fun Main(
+    streamerUrl: String,
+    password: String,
+    name: String,
+    version: String,
+    onStart: (streamerUrl: String, password: String) -> Unit,
+    onStop: () -> Unit,
+    saveSettings: (streamerUrl: String, password: String, name: String) -> Unit,
+) {
     var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
     var passwordInput by remember { mutableStateOf(password) }
     var nameInput by remember { mutableStateOf(name) }
@@ -421,7 +468,7 @@ fun Main(streamerUrl: String,
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text("Moblink", fontSize = 30.sp)
         OutlinedTextField(
@@ -430,7 +477,7 @@ fun Main(streamerUrl: String,
                 streamerUrlInput = it
                 saveSettings(streamerUrlInput, passwordInput, nameInput)
             },
-            label = { Text("Streamer URL") }
+            label = { Text("Streamer URL") },
         )
         OutlinedTextField(
             value = passwordInput,
@@ -438,7 +485,7 @@ fun Main(streamerUrl: String,
                 passwordInput = it
                 saveSettings(streamerUrlInput, passwordInput, nameInput)
             },
-            label = { Text("Password") }
+            label = { Text("Password") },
         )
         OutlinedTextField(
             value = nameInput,
@@ -446,16 +493,12 @@ fun Main(streamerUrl: String,
                 nameInput = it
                 saveSettings(streamerUrlInput, passwordInput, nameInput)
             },
-            label = { Text("Name") }
+            label = { Text("Name") },
         )
-        Row(modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly) {
-            Button(onClick = { onStart(streamerUrlInput, passwordInput) }) {
-                Text("Start")
-            }
-            Button(onClick = { onStop() }) {
-                Text("Stop")
-            }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            Button(onClick = { onStart(streamerUrlInput, passwordInput) }) { Text("Start") }
+            Button(onClick = { onStop() }) { Text("Stop") }
         }
+        Text("Version $version")
     }
 }
