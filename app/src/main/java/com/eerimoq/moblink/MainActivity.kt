@@ -163,7 +163,6 @@ class MainActivity : ComponentActivity() {
     private fun handleMessage(text: String) {
         try {
             val message = Gson().fromJson(text, MessageToClient::class.java)
-            Log.i("Moblink", "Got: $message")
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
@@ -250,7 +249,6 @@ class MainActivity : ComponentActivity() {
                 } catch (e: IOException) {
                     break
                 }
-                Log.i("Moblink", "Got streamer data: $buffer")
                 if (!destinationReceiverCreated) {
                     startDestinationReceiver(streamerSocket, destinationSocket, packet.address, packet.port)
                     destinationReceiverCreated = true
@@ -275,7 +273,6 @@ class MainActivity : ComponentActivity() {
                 } catch (e: IOException) {
                     break
                 }
-                Log.i("Moblink", "Got destination data: $buffer")
                 packet.address = streamerAddress
                 packet.port = streamerPort
                 streamerSocket.send(packet)
