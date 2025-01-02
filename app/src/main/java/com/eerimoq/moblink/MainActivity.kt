@@ -179,30 +179,40 @@ class MainActivity : ComponentActivity() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     super.onMessage(webSocket, text)
                     handler?.post {
-                        Log.i("Moblink", "Websocket message received: $text")
-                        handleMessage(text)
+                        if (webSocket === getWebSocket()) {
+                            Log.i("Moblink", "Websocket message received: $text")
+                            handleMessage(text)
+                        }
                     }
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     super.onClosed(webSocket, code, reason)
                     handler?.post {
-                        Log.i("Moblink","Websocket closed $reason (code $code)")
-                        reconnectSoon()
+                        if (webSocket === getWebSocket()) {
+                            Log.i("Moblink","Websocket closed $reason (code $code)")
+                            reconnectSoon()
+                        }
                     }
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     super.onFailure(webSocket, t, response)
                     handler?.post {
-                        Log.i("Moblink", "Websocket failure $t")
-                        reconnectSoon()
+                        if (webSocket === getWebSocket()) {
+                            Log.i("Moblink", "Websocket failure $t $webSocket ${getWebSocket()}")
+                            reconnectSoon()
+                        }
                     }
                 }
             })
         } catch (e: Exception) {
             Log.i("Moblink", "Failed to build URL: $e")
         }
+    }
+
+    private fun getWebSocket(): WebSocket? {
+        return webSocket
     }
 
     private fun stopInternal() {
@@ -212,8 +222,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun reconnectSoon() {
+        Log.i("Moblink", "Reconnect soon")
         stopInternal()
         handler?.postDelayed({
+            Log.i("Moblink", "Reconnect")
             startInternal()
         }, 5000)
     }
