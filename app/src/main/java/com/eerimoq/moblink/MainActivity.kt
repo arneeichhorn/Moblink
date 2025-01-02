@@ -16,9 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -45,7 +43,6 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString.Companion.encodeUtf8
-import okio.IOException
 
 data class Empty(val dummy: Boolean?)
 
@@ -94,29 +91,14 @@ class MainActivity : ComponentActivity() {
     private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var started = false
     private var version = "?"
+    private var buttonText = "Start"
+    private val mutableButtonText = mutableStateOf(buttonText)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setup()
-        setContent {
-            MoblinkTheme {
-                Main(
-                    streamerUrl,
-                    password,
-                    name,
-                    version,
-                    { streamerUrl: String, password: String -> start(streamerUrl, password) },
-                    { stop() },
-                    { streamerUrl: String, password: String, name: String ->
-                        this.streamerUrl = streamerUrl
-                        this.password = password
-                        this.name = name
-                        saveSettings(streamerUrl, password, relayId, name)
-                    },
-                )
-            }
-        }
+        setContent { MoblinkTheme { Main() } }
     }
 
     private fun setup() {
@@ -147,7 +129,7 @@ class MainActivity : ComponentActivity() {
         editor.apply()
     }
 
-    private fun start(streamerUrl: String, password: String) {
+    private fun start(streamerUrl: String, password: String, name: String) {
         handler?.post {
             Log.i("Moblink", "Start")
             if (started) {
@@ -156,6 +138,7 @@ class MainActivity : ComponentActivity() {
             started = true
             this.streamerUrl = streamerUrl
             this.password = password
+            this.name = name
             startInternal()
         }
     }
@@ -342,25 +325,23 @@ class MainActivity : ComponentActivity() {
             var destinationReceiverCreated = false
             val buffer = ByteArray(2048)
             val packet = DatagramPacket(buffer, buffer.size)
-            while (true) {
-                try {
+            try {
+                while (true) {
                     streamerSocket.receive(packet)
-                } catch (e: IOException) {
-                    break
+                    if (!destinationReceiverCreated) {
+                        startDestinationReceiver(
+                            streamerSocket,
+                            destinationSocket,
+                            packet.address,
+                            packet.port,
+                        )
+                        destinationReceiverCreated = true
+                    }
+                    packet.address = destinationAddress
+                    packet.port = destinationPort
+                    destinationSocket.send(packet)
                 }
-                if (!destinationReceiverCreated) {
-                    startDestinationReceiver(
-                        streamerSocket,
-                        destinationSocket,
-                        packet.address,
-                        packet.port,
-                    )
-                    destinationReceiverCreated = true
-                }
-                packet.address = destinationAddress
-                packet.port = destinationPort
-                destinationSocket.send(packet)
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -373,16 +354,14 @@ class MainActivity : ComponentActivity() {
         thread {
             val buffer = ByteArray(2048)
             val packet = DatagramPacket(buffer, buffer.size)
-            while (true) {
-                try {
+            try {
+                while (true) {
                     destinationSocket.receive(packet)
-                } catch (e: IOException) {
-                    break
+                    packet.address = streamerAddress
+                    packet.port = streamerPort
+                    streamerSocket.send(packet)
                 }
-                packet.address = streamerAddress
-                packet.port = streamerPort
-                streamerSocket.send(packet)
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -426,56 +405,57 @@ class MainActivity : ComponentActivity() {
             getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager.requestNetwork(networkRequest, networkCallback)
     }
-}
 
-@Composable
-fun Main(
-    streamerUrl: String,
-    password: String,
-    name: String,
-    version: String,
-    onStart: (streamerUrl: String, password: String) -> Unit,
-    onStop: () -> Unit,
-    saveSettings: (streamerUrl: String, password: String, name: String) -> Unit,
-) {
-    var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
-    var passwordInput by remember { mutableStateOf(password) }
-    var nameInput by remember { mutableStateOf(name) }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("Moblink", fontSize = 30.sp)
-        OutlinedTextField(
-            value = streamerUrlInput,
-            onValueChange = {
-                streamerUrlInput = it
-                saveSettings(streamerUrlInput, passwordInput, nameInput)
-            },
-            label = { Text("Streamer URL") },
-        )
-        OutlinedTextField(
-            value = passwordInput,
-            onValueChange = {
-                passwordInput = it
-                saveSettings(streamerUrlInput, passwordInput, nameInput)
-            },
-            label = { Text("Password") },
-        )
-        OutlinedTextField(
-            value = nameInput,
-            onValueChange = {
-                nameInput = it
-                saveSettings(streamerUrlInput, passwordInput, nameInput)
-            },
-            label = { Text("Name") },
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Button(onClick = { onStart(streamerUrlInput, passwordInput) }) { Text("Start") }
-            Button(onClick = { onStop() }) { Text("Stop") }
+    @Composable
+    fun Main() {
+        var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
+        var passwordInput by remember { mutableStateOf(password) }
+        var nameInput by remember { mutableStateOf(name) }
+        val text by mutableButtonText
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("Moblink", fontSize = 30.sp)
+            OutlinedTextField(
+                value = streamerUrlInput,
+                onValueChange = {
+                    streamerUrlInput = it
+                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                },
+                label = { Text("Streamer URL") },
+            )
+            OutlinedTextField(
+                value = passwordInput,
+                onValueChange = {
+                    passwordInput = it
+                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                },
+                label = { Text("Password") },
+            )
+            OutlinedTextField(
+                value = nameInput,
+                onValueChange = {
+                    nameInput = it
+                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                },
+                label = { Text("Name") },
+            )
+            Button(
+                onClick = {
+                    if (text == "Start") {
+                        mutableButtonText.value = "Stop"
+                        start(streamerUrlInput, passwordInput, nameInput)
+                    } else {
+                        mutableButtonText.value = "Start"
+                        stop()
+                    }
+                }
+            ) {
+                Text(text)
+            }
+            Text("Version $version")
         }
-        Text("Version $version")
     }
 }
