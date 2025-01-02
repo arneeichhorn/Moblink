@@ -134,7 +134,7 @@ class MainActivity : ComponentActivity() {
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
-        } catch (e: Exception) {}
+        } catch (_: Exception) {}
     }
 
     private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
@@ -258,7 +258,7 @@ class MainActivity : ComponentActivity() {
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
-                handleMessageIdentified(message.identified)
+                handleMessageIdentified()
             } else if (message.request != null) {
                 handleMessageRequest(message.request)
             }
@@ -283,7 +283,7 @@ class MainActivity : ComponentActivity() {
         send(text)
     }
 
-    private fun handleMessageIdentified(message: Identified) {}
+    private fun handleMessageIdentified() {}
 
     private fun handleMessageRequest(request: MessageRequest) {
         if (request.data.startTunnel != null) {
@@ -425,29 +425,6 @@ class MainActivity : ComponentActivity() {
         val connectivityManager =
             getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager.requestNetwork(networkRequest, networkCallback)
-    }
-
-    private fun sendDatagramOverNetwork(
-        network: Network,
-        host: String,
-        port: Int,
-        message: String,
-    ) {
-        thread {
-            val socket = DatagramSocket()
-            network.bindSocket(socket)
-            while (true) {
-                try {
-                    val buffer = message.toByteArray()
-                    val address = InetAddress.getByName(host)
-                    val packet = DatagramPacket(buffer, buffer.size, address, port)
-                    socket.send(packet)
-                } catch (e: Exception) {
-                    Log.e("Moblink", "Error sending datagram", e)
-                }
-                Thread.sleep(1000)
-            }
-        }
     }
 }
 
