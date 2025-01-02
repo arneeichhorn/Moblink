@@ -25,26 +25,26 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
+import com.google.gson.Gson
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString.Companion.encodeUtf8
+import okio.IOException
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
-import com.google.gson.Gson
-import okio.ByteString.Companion.encodeUtf8
-import okio.IOException
-import java.security.MessageDigest
 
 data class Empty(val dummy: Boolean?)
 
@@ -93,8 +93,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             MoblinkTheme {
                 Main(
+                    streamerUrl,
+                    password,
                     { streamerUrl: String, password: String -> start(streamerUrl, password) },
-                    { stop() }
+                    { stop() },
+                    {streamerUrl: String, password: String -> saveSettings(streamerUrl, password) }
                 )
             }
         }
@@ -105,6 +108,18 @@ class MainActivity : ComponentActivity() {
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, "WiFi")
         handlerThread.start()
         handler = Handler(handlerThread.looper)
+        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        streamerUrl = settings.getString("streamerUrl", "ws://192.168.0.34:7777") ?: ""
+        password = settings.getString("password", "1234") ?: ""
+    }
+
+    private fun saveSettings(streamerUrl: String, password: String) {
+        Log.i("Moblink", "Saving settings")
+        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val editor = settings.edit()
+        editor.putString("streamerUrl", streamerUrl)
+        editor.putString("password", password)
+        editor.apply()
     }
 
     private fun start(streamerUrl: String, password: String) {
@@ -338,10 +353,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Main(onStart: (streamerUrl: String, password: String) -> Unit, onStop: () -> Unit) {
-    // TODO: Should be stored persistently.
-    var streamerUrl by rememberSaveable { mutableStateOf("ws://192.168.50.203:7777") }
-    var password by rememberSaveable { mutableStateOf("M7oA0PWx8zihStRvaUFE") }
+fun Main(streamerUrl: String,
+         password: String,
+         onStart: (streamerUrl: String, password: String) -> Unit,
+         onStop: () -> Unit,
+         saveSettings: (streamerUrl: String, password: String) -> Unit) {
+    var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
+    var passwordInput by remember { mutableStateOf(password) }
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -350,18 +368,24 @@ fun Main(onStart: (streamerUrl: String, password: String) -> Unit, onStop: () ->
     ) {
         Text("Moblink", fontSize = 30.sp)
         OutlinedTextField(
-            value = streamerUrl,
-            onValueChange = { streamerUrl = it },
+            value = streamerUrlInput,
+            onValueChange = {
+                streamerUrlInput = it
+                saveSettings(streamerUrlInput, passwordInput)
+            },
             label = { Text("Streamer URL") }
         )
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
+            value = passwordInput,
+            onValueChange = {
+                passwordInput = it
+                saveSettings(streamerUrlInput, passwordInput)
+            },
             label = { Text("Password") }
         )
         Row(modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly) {
-            Button(onClick = { onStart(streamerUrl, password) }) {
+            Button(onClick = { onStart(streamerUrlInput, passwordInput) }) {
                 Text("Start")
             }
             Button(onClick = { onStop() }) {
