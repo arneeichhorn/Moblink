@@ -1,9 +1,5 @@
 package com.eerimoq.moblink
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -14,7 +10,6 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.IBinder
 import android.os.PowerManager
 import android.util.Base64
 import android.util.Log
@@ -38,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
-import androidx.core.app.NotificationCompat
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 import com.google.gson.Gson
 import java.net.DatagramPacket
@@ -54,38 +48,6 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString.Companion.encodeUtf8
-
-data class Empty(val dummy: Boolean?)
-
-data class Result(val ok: Empty?, val wrongPassword: Empty?)
-
-data class Authentication(val challenge: String, val salt: String)
-
-data class Hello(val apiVersion: String, val authentication: Authentication)
-
-data class Identified(val result: Result)
-
-data class StartTunnelRequest(val address: String, val port: Int)
-
-data class MessageRequestData(val startTunnel: StartTunnelRequest?)
-
-data class MessageRequest(val id: Int, val data: MessageRequestData)
-
-data class MessageToClient(
-    val hello: Hello?,
-    val identified: Identified?,
-    val request: MessageRequest?,
-)
-
-data class StartTunnelResponseData(val port: Int)
-
-data class ResponseData(val startTunnel: StartTunnelResponseData?)
-
-data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
-
-data class Identify(val id: String, val name: String, val authentication: String)
-
-data class MessageToServer(val identify: Identify?, val response: MessageResponse?)
 
 class MainActivity : ComponentActivity() {
     private var webSocket: WebSocket? = null
@@ -546,62 +508,5 @@ class MainActivity : ComponentActivity() {
             }
             Text("Version $version")
         }
-    }
-}
-
-enum class Actions {
-    START,
-    STOP,
-}
-
-class MoblinkService : Service() {
-    companion object {
-        private const val CHANNEL_ID = "MoblinkChannel"
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        createNotificationChannel()
-        startForegroundService()
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == Actions.START.name) {
-            Log.i("Moblink", "Start service")
-        } else {
-            Log.i("Moblink", "Stop service")
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-        }
-        return START_NOT_STICKY
-    }
-
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
-
-    private fun createNotificationChannel() {
-        val serviceChannel =
-            NotificationChannel(
-                CHANNEL_ID,
-                "Moblink Service Channel",
-                NotificationManager.IMPORTANCE_DEFAULT,
-            )
-        val manager = getSystemService(NotificationManager::class.java)
-        manager?.createNotificationChannel(serviceChannel)
-    }
-
-    private fun startForegroundService() {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent =
-            PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
-        val notification =
-            NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle("Moblink")
-                .setContentText("Moblink relay active?")
-                .setContentIntent(pendingIntent)
-                .build()
-        startForeground(1, notification)
     }
 }
