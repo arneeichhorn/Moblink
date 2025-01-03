@@ -508,6 +508,8 @@ class MainActivity : ComponentActivity() {
                     saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
                 },
                 label = { Text("Streamer URL") },
+                placeholder = { Text("ws://192.168.0.10:7777") },
+                singleLine = true,
             )
             OutlinedTextField(
                 value = passwordInput,
@@ -516,6 +518,7 @@ class MainActivity : ComponentActivity() {
                     saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
                 },
                 label = { Text("Password") },
+                singleLine = true,
             )
             OutlinedTextField(
                 value = nameInput,
@@ -524,6 +527,7 @@ class MainActivity : ComponentActivity() {
                     saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
                 },
                 label = { Text("Name") },
+                singleLine = true,
             )
             Text(status)
             Button(
