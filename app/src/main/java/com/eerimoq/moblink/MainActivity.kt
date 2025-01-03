@@ -1,6 +1,11 @@
 package com.eerimoq.moblink
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.ConnectivityManager.NetworkCallback
 import android.net.Network
@@ -9,6 +14,8 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.IBinder
+import android.os.PowerManager
 import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -28,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationCompat
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 import com.google.gson.Gson
 import java.net.DatagramPacket
@@ -93,12 +101,21 @@ class MainActivity : ComponentActivity() {
     private var version = "?"
     private var buttonText = "Start"
     private val mutableButtonText = mutableStateOf(buttonText)
+    private val mutableStatus = mutableStateOf("Idle")
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var connected = false
+    private var wrongPassword = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setup()
         setContent { MoblinkTheme { Main() } }
+    }
+
+    override fun onDestroy() {
+        stop()
+        super.onDestroy()
     }
 
     private fun setup() {
@@ -117,6 +134,27 @@ class MainActivity : ComponentActivity() {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
         } catch (_: Exception) {}
+        handler?.post {
+            updateStatus()
+        }
+    }
+
+    private fun updateStatus() {
+        val status =
+            if (cellularNetwork == null) {
+                "Waiting for cellular"
+            } else if (wiFiNetwork == null) {
+                "Waiting for WiFi"
+            } else if (connected) {
+                "Connected to streamer"
+            } else if (wrongPassword) {
+                "Wrong password"
+            } else if (started) {
+                "Connecting to streamer"
+            } else {
+                "Disconnected from streamer"
+            }
+        runOnUiThread { mutableStatus.value = status }
     }
 
     private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
@@ -127,29 +165,40 @@ class MainActivity : ComponentActivity() {
         editor.putString("relayId", relayId)
         editor.putString("name", name)
         editor.apply()
+        handler?.post {
+            this.streamerUrl = streamerUrl
+            this.password = password
+            this.name = name
+        }
     }
 
-    private fun start(streamerUrl: String, password: String, name: String) {
+    private fun start() {
+        startService()
         handler?.post {
             Log.i("Moblink", "Start")
             if (started) {
                 return@post
             }
             started = true
-            this.streamerUrl = streamerUrl
-            this.password = password
-            this.name = name
+            wakeLock =
+                (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                    newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock").apply {
+                        acquire()
+                    }
+                }
             startInternal()
         }
     }
 
     private fun stop() {
+        stopService()
         handler?.post {
             Log.i("Moblink", "Stop")
             if (!started) {
                 return@post
             }
             started = false
+            wakeLock?.release()
             stopInternal()
         }
     }
@@ -213,14 +262,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun getWebSocket(): WebSocket? {
-        return webSocket
-    }
-
     private fun stopInternal() {
         webSocket?.cancel()
+        webSocket = null
+        connected = false
+        wrongPassword = false
+        updateStatus()
         streamerSocket?.close()
         destinationSocket?.close()
+    }
+
+    private fun startService() {
+        controlService(Actions.START)
+    }
+
+    private fun stopService() {
+        controlService(Actions.STOP)
+    }
+
+    private fun controlService(action: Actions) {
+        val intent = Intent(this, MoblinkService::class.java)
+        intent.action = action.name
+        startForegroundService(intent)
     }
 
     private fun reconnectSoon() {
@@ -228,11 +291,15 @@ class MainActivity : ComponentActivity() {
         stopInternal()
         handler?.postDelayed(
             {
-                Log.i("Moblink", "Reconnect")
+                Log.i("Moblink", "Reconnect?")
                 startInternal()
             },
             5000,
         )
+    }
+
+    private fun getWebSocket(): WebSocket? {
+        return webSocket
     }
 
     private fun handleMessage(text: String) {
@@ -241,7 +308,7 @@ class MainActivity : ComponentActivity() {
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
-                handleMessageIdentified()
+                handleMessageIdentified(message.identified)
             } else if (message.request != null) {
                 handleMessageRequest(message.request)
             }
@@ -266,7 +333,14 @@ class MainActivity : ComponentActivity() {
         send(text)
     }
 
-    private fun handleMessageIdentified() {}
+    private fun handleMessageIdentified(identified: Identified) {
+        if (identified.result.ok != null) {
+            connected = true
+        } else if (identified.result.wrongPassword != null) {
+            wrongPassword = true
+        }
+        updateStatus()
+    }
 
     private fun handleMessageRequest(request: MessageRequest) {
         if (request.data.startTunnel != null) {
@@ -276,9 +350,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
         if (!setupStreamerSocket()) {
+            reconnectSoon()
             return
         }
         if (!setupDestinationSocket()) {
+            reconnectSoon()
             return
         }
         Log.i("Moblink", "Port: ${streamerSocket!!.localPort}")
@@ -386,6 +462,7 @@ class MainActivity : ComponentActivity() {
                         } else {
                             wiFiNetwork = network
                         }
+                        updateStatus()
                     }
                 }
 
@@ -398,6 +475,7 @@ class MainActivity : ComponentActivity() {
                         } else {
                             wiFiNetwork = null
                         }
+                        updateStatus()
                     }
                 }
             }
@@ -412,6 +490,7 @@ class MainActivity : ComponentActivity() {
         var passwordInput by remember { mutableStateOf(password) }
         var nameInput by remember { mutableStateOf(name) }
         val text by mutableButtonText
+        val status by mutableStatus
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
@@ -442,11 +521,12 @@ class MainActivity : ComponentActivity() {
                 },
                 label = { Text("Name") },
             )
+            Text(status)
             Button(
                 onClick = {
                     if (text == "Start") {
                         mutableButtonText.value = "Stop"
-                        start(streamerUrlInput, passwordInput, nameInput)
+                        start()
                     } else {
                         mutableButtonText.value = "Start"
                         stop()
@@ -457,5 +537,62 @@ class MainActivity : ComponentActivity() {
             }
             Text("Version $version")
         }
+    }
+}
+
+enum class Actions {
+    START,
+    STOP,
+}
+
+class MoblinkService : Service() {
+    companion object {
+        private const val CHANNEL_ID = "MoblinkChannel"
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        startForegroundService()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == Actions.START.name) {
+            Log.i("Moblink", "Start service")
+        } else {
+            Log.i("Moblink", "Stop service")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? {
+        return null
+    }
+
+    private fun createNotificationChannel() {
+        val serviceChannel =
+            NotificationChannel(
+                CHANNEL_ID,
+                "Moblink Service Channel",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.createNotificationChannel(serviceChannel)
+    }
+
+    private fun startForegroundService() {
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent =
+            PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
+        val notification =
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setContentTitle("Moblink")
+                .setContentText("Moblink relay active?")
+                .setContentIntent(pendingIntent)
+                .build()
+        startForeground(1, notification)
     }
 }
