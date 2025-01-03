@@ -137,31 +137,31 @@ class MainActivity : ComponentActivity() {
 
     private fun start() {
         startService()
+        wakeLock =
+            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
+                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock").apply {
+                    acquire()
+                }
+            }
         handler?.post {
             Log.i("Moblink", "Start")
             if (started) {
                 return@post
             }
             started = true
-            wakeLock =
-                (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
-                    newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock").apply {
-                        acquire()
-                    }
-                }
             startInternal()
         }
     }
 
     private fun stop() {
         stopService()
+        wakeLock?.release()
         handler?.post {
             Log.i("Moblink", "Stop")
             if (!started) {
                 return@post
             }
             started = false
-            wakeLock?.release()
             stopInternal()
         }
     }
