@@ -21,6 +21,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
@@ -134,9 +136,7 @@ class MainActivity : ComponentActivity() {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
         } catch (_: Exception) {}
-        handler?.post {
-            updateStatus()
-        }
+        handler?.post { updateStatus() }
     }
 
     private fun updateStatus() {
@@ -383,7 +383,7 @@ class MainActivity : ComponentActivity() {
     private fun setupDestinationSocket(): Boolean {
         destinationSocket?.close()
         if (cellularNetwork == null) {
-            Log.i("Moblink", "Cellular networks not ready")
+            Log.i("Moblink", "Cellular network not ready")
             return false
         }
         destinationSocket = DatagramSocket()
@@ -497,6 +497,10 @@ class MainActivity : ComponentActivity() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("Moblink", fontSize = 30.sp)
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                contentDescription = null,
+            )
             OutlinedTextField(
                 value = streamerUrlInput,
                 onValueChange = {
