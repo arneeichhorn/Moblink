@@ -55,21 +55,25 @@ class MainActivity : ComponentActivity() {
     private var cellularNetwork: Network? = null
     private var streamerSocket: DatagramSocket? = null
     private var destinationSocket: DatagramSocket? = null
+    private var relayId = ""
     private var streamerUrl = ""
     private var password = ""
-    private var name = "Relay"
-    private var relayId = ""
+    private var name = ""
     private val handlerThread = HandlerThread("Something")
     private var handler: Handler? = null
     private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var started = false
-    private var version = "?"
-    private var buttonText = "Start"
-    private val mutableButtonText = mutableStateOf(buttonText)
-    private val mutableStatus = mutableStateOf("Idle")
-    private var wakeLock: PowerManager.WakeLock? = null
     private var connected = false
     private var wrongPassword = false
+    private var uiStreamerUrl = ""
+    private var uiPassword = ""
+    private var uiName = ""
+    private var uiStarted = false
+    private var uiVersion = "?"
+    private var uiButtonText = "Start"
+    private val uiMutableButtonText = mutableStateOf(uiButtonText)
+    private val uiMutableStatus = mutableStateOf("")
+    private var uiWakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,15 +93,15 @@ class MainActivity : ComponentActivity() {
         handlerThread.start()
         handler = Handler(handlerThread.looper)
         val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        streamerUrl = settings.getString("streamerUrl", "") ?: ""
-        password = settings.getString("password", "") ?: ""
+        uiStreamerUrl = settings.getString("streamerUrl", "") ?: ""
+        uiPassword = settings.getString("password", "") ?: ""
         val uuid = UUID.randomUUID().toString()
         relayId = settings.getString("relayId", uuid) ?: uuid
-        name = settings.getString("name", "Relay") ?: "Relay"
-        saveSettings(streamerUrl, password, relayId, name)
+        uiName = settings.getString("name", "Relay") ?: "Relay"
+        saveSettings(uiStreamerUrl, uiPassword, relayId, uiName)
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
-            version = packageInfo.versionName
+            uiVersion = packageInfo.versionName
         } catch (_: Exception) {}
         handler?.post { updateStatus() }
     }
@@ -117,7 +121,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 "Disconnected from streamer"
             }
-        runOnUiThread { mutableStatus.value = status }
+        runOnUiThread { uiMutableStatus.value = status }
     }
 
     private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
@@ -136,8 +140,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun start() {
+        if (uiStarted) {
+            return
+        }
+        uiStarted = true
         startService()
-        wakeLock =
+        uiWakeLock =
             (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
                 newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock").apply {
                     acquire()
@@ -154,8 +162,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stop() {
+        if (!uiStarted) {
+            return
+        }
+        uiStarted = false
         stopService()
-        wakeLock?.release()
+        uiWakeLock?.release()
         handler?.post {
             Log.i("Moblink", "Stop")
             if (!started) {
@@ -354,56 +366,6 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
-    private fun startStreamerReceiver(
-        streamerSocket: DatagramSocket,
-        destinationSocket: DatagramSocket,
-        destinationAddress: InetAddress,
-        destinationPort: Int,
-    ) {
-        thread {
-            var destinationReceiverCreated = false
-            val buffer = ByteArray(2048)
-            val packet = DatagramPacket(buffer, buffer.size)
-            try {
-                while (true) {
-                    streamerSocket.receive(packet)
-                    if (!destinationReceiverCreated) {
-                        startDestinationReceiver(
-                            streamerSocket,
-                            destinationSocket,
-                            packet.address,
-                            packet.port,
-                        )
-                        destinationReceiverCreated = true
-                    }
-                    packet.address = destinationAddress
-                    packet.port = destinationPort
-                    destinationSocket.send(packet)
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
-    private fun startDestinationReceiver(
-        streamerSocket: DatagramSocket,
-        destinationSocket: DatagramSocket,
-        streamerAddress: InetAddress,
-        streamerPort: Int,
-    ) {
-        thread {
-            val buffer = ByteArray(2048)
-            val packet = DatagramPacket(buffer, buffer.size)
-            try {
-                while (true) {
-                    destinationSocket.receive(packet)
-                    packet.address = streamerAddress
-                    packet.port = streamerPort
-                    streamerSocket.send(packet)
-                }
-            } catch (_: Exception) {}
-        }
-    }
-
     private fun send(text: String) {
         webSocket?.send(text)
     }
@@ -449,11 +411,11 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Main() {
-        var streamerUrlInput by remember { mutableStateOf(streamerUrl) }
-        var passwordInput by remember { mutableStateOf(password) }
-        var nameInput by remember { mutableStateOf(name) }
-        val text by mutableButtonText
-        val status by mutableStatus
+        var streamerUrlInput by remember { mutableStateOf(uiStreamerUrl) }
+        var passwordInput by remember { mutableStateOf(uiPassword) }
+        var nameInput by remember { mutableStateOf(uiName) }
+        val text by uiMutableButtonText
+        val status by uiMutableStatus
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
@@ -496,17 +458,67 @@ class MainActivity : ComponentActivity() {
             Button(
                 onClick = {
                     if (text == "Start") {
-                        mutableButtonText.value = "Stop"
+                        uiMutableButtonText.value = "Stop"
                         start()
                     } else {
-                        mutableButtonText.value = "Start"
+                        uiMutableButtonText.value = "Start"
                         stop()
                     }
                 }
             ) {
                 Text(text)
             }
-            Text("Version $version")
+            Text("Version $uiVersion")
         }
+    }
+}
+
+private fun startStreamerReceiver(
+    streamerSocket: DatagramSocket,
+    destinationSocket: DatagramSocket,
+    destinationAddress: InetAddress,
+    destinationPort: Int,
+) {
+    thread {
+        var destinationReceiverCreated = false
+        val buffer = ByteArray(2048)
+        val packet = DatagramPacket(buffer, buffer.size)
+        try {
+            while (true) {
+                streamerSocket.receive(packet)
+                if (!destinationReceiverCreated) {
+                    startDestinationReceiver(
+                        streamerSocket,
+                        destinationSocket,
+                        packet.address,
+                        packet.port,
+                    )
+                    destinationReceiverCreated = true
+                }
+                packet.address = destinationAddress
+                packet.port = destinationPort
+                destinationSocket.send(packet)
+            }
+        } catch (_: Exception) {}
+    }
+}
+
+private fun startDestinationReceiver(
+    streamerSocket: DatagramSocket,
+    destinationSocket: DatagramSocket,
+    streamerAddress: InetAddress,
+    streamerPort: Int,
+) {
+    thread {
+        val buffer = ByteArray(2048)
+        val packet = DatagramPacket(buffer, buffer.size)
+        try {
+            while (true) {
+                destinationSocket.receive(packet)
+                packet.address = streamerAddress
+                packet.port = streamerPort
+                streamerSocket.send(packet)
+            }
+        } catch (_: Exception) {}
     }
 }
