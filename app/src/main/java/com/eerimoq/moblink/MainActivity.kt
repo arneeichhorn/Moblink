@@ -39,7 +39,6 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.MessageDigest
-import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import okhttp3.OkHttpClient
@@ -65,9 +64,7 @@ class MainActivity : ComponentActivity() {
     private var started = false
     private var connected = false
     private var wrongPassword = false
-    private var uiStreamerUrl = ""
-    private var uiPassword = ""
-    private var uiName = ""
+    private var uiSettings: Settings? = null
     private var uiStarted = false
     private var uiVersion = "?"
     private var uiButtonText = "Start"
@@ -88,17 +85,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setup() {
+        uiSettings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, "Cellular")
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, "WiFi")
         handlerThread.start()
         handler = Handler(handlerThread.looper)
-        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        uiStreamerUrl = settings.getString("streamerUrl", "") ?: ""
-        uiPassword = settings.getString("password", "") ?: ""
-        val uuid = UUID.randomUUID().toString()
-        relayId = settings.getString("relayId", uuid) ?: uuid
-        uiName = settings.getString("name", "Relay") ?: "Relay"
-        saveSettings(uiStreamerUrl, uiPassword, relayId, uiName)
+        uiSettings!!.load()
+        streamerUrl = uiSettings!!.streamerUrl
+        password = uiSettings!!.password
+        relayId = uiSettings!!.relayId
+        name = uiSettings!!.name
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             uiVersion = packageInfo.versionName
@@ -124,14 +120,11 @@ class MainActivity : ComponentActivity() {
         runOnUiThread { uiMutableStatus.value = status }
     }
 
-    private fun saveSettings(streamerUrl: String, password: String, relayId: String, name: String) {
-        val settings = getSharedPreferences("settings", Context.MODE_PRIVATE)
-        val editor = settings.edit()
-        editor.putString("streamerUrl", streamerUrl)
-        editor.putString("password", password)
-        editor.putString("relayId", relayId)
-        editor.putString("name", name)
-        editor.apply()
+    private fun saveSettings() {
+        uiSettings!!.store()
+        val streamerUrl = uiSettings!!.streamerUrl
+        val password = uiSettings!!.password
+        val name = uiSettings!!.name
         handler?.post {
             this.streamerUrl = streamerUrl
             this.password = password
@@ -411,9 +404,9 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Main() {
-        var streamerUrlInput by remember { mutableStateOf(uiStreamerUrl) }
-        var passwordInput by remember { mutableStateOf(uiPassword) }
-        var nameInput by remember { mutableStateOf(uiName) }
+        var streamerUrlInput by remember { mutableStateOf(uiSettings!!.streamerUrl) }
+        var passwordInput by remember { mutableStateOf(uiSettings!!.password) }
+        var nameInput by remember { mutableStateOf(uiSettings!!.name) }
         val text by uiMutableButtonText
         val status by uiMutableStatus
         Column(
@@ -430,7 +423,8 @@ class MainActivity : ComponentActivity() {
                 value = streamerUrlInput,
                 onValueChange = {
                     streamerUrlInput = it
-                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                    uiSettings!!.streamerUrl = it
+                    saveSettings()
                 },
                 label = { Text("Streamer URL") },
                 placeholder = { Text("ws://192.168.0.10:7777") },
@@ -440,7 +434,8 @@ class MainActivity : ComponentActivity() {
                 value = passwordInput,
                 onValueChange = {
                     passwordInput = it
-                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                    uiSettings!!.password = it
+                    saveSettings()
                 },
                 label = { Text("Password") },
                 singleLine = true,
@@ -449,7 +444,8 @@ class MainActivity : ComponentActivity() {
                 value = nameInput,
                 onValueChange = {
                     nameInput = it
-                    saveSettings(streamerUrlInput, passwordInput, relayId, nameInput)
+                    uiSettings!!.name = it
+                    saveSettings()
                 },
                 label = { Text("Name") },
                 singleLine = true,
