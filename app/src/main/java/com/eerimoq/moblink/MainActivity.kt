@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
     private var uiVersion = "?"
     private val uiButtonText = mutableStateOf("Start")
     private val uiStatus = mutableStateOf("")
-    private val wakeLock = WakeLock()
+    private val uiWakeLock = WakeLock()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -138,7 +138,7 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Start")
         uiStarted = true
         startService(this)
-        wakeLock.acquire(this)
+        uiWakeLock.acquire(this)
         handler?.post {
             if (!started) {
                 started = true
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Stop")
         uiStarted = false
         stopService(this)
-        wakeLock.release()
+        uiWakeLock.release()
         handler?.post {
             if (started) {
                 started = false
