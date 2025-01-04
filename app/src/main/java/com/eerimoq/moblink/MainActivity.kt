@@ -141,7 +141,7 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Start")
         uiStarted = true
         startService(this)
-        enableBackgroundProcessing()
+        acquireBackgroundProcessing()
         handler?.post {
             if (started) {
                 return@post
@@ -158,7 +158,7 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Stop")
         uiStarted = false
         stopService(this)
-        disableBackgroundProcessing()
+        releaseBackgroundProcessing()
         handler?.post {
             if (!started) {
                 return@post
@@ -173,49 +173,51 @@ class MainActivity : ComponentActivity() {
         if (!started) {
             return
         }
-        try {
-            val request = Request.Builder().url(streamerUrl).build()
-            webSocket =
-                okHttpClient.newWebSocket(
-                    request,
-                    object : WebSocketListener() {
-                        override fun onMessage(webSocket: WebSocket, text: String) {
-                            super.onMessage(webSocket, text)
-                            handler?.post {
-                                if (webSocket === getWebSocket()) {
-                                    handleMessage(text)
-                                }
+        val request =
+            try {
+                Request.Builder().url(streamerUrl).build()
+            } catch (e: Exception) {
+                Log.i("Moblink", "Failed to build URL: $e")
+                return
+            }
+        webSocket =
+            okHttpClient.newWebSocket(
+                request,
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        super.onMessage(webSocket, text)
+                        handler?.post {
+                            if (webSocket === getWebSocket()) {
+                                handleMessage(text)
                             }
                         }
+                    }
 
-                        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                            super.onClosed(webSocket, code, reason)
-                            handler?.post {
-                                if (webSocket === getWebSocket()) {
-                                    Log.i("Moblink", "Websocket closed $reason (code $code)")
-                                    reconnectSoon()
-                                }
+                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                        super.onClosed(webSocket, code, reason)
+                        handler?.post {
+                            if (webSocket === getWebSocket()) {
+                                Log.i("Moblink", "Websocket closed $reason (code $code)")
+                                reconnectSoon()
                             }
                         }
+                    }
 
-                        override fun onFailure(
-                            webSocket: WebSocket,
-                            t: Throwable,
-                            response: Response?,
-                        ) {
-                            super.onFailure(webSocket, t, response)
-                            handler?.post {
-                                if (webSocket === getWebSocket()) {
-                                    Log.i("Moblink", "Websocket failure $t")
-                                    reconnectSoon()
-                                }
+                    override fun onFailure(
+                        webSocket: WebSocket,
+                        t: Throwable,
+                        response: Response?,
+                    ) {
+                        super.onFailure(webSocket, t, response)
+                        handler?.post {
+                            if (webSocket === getWebSocket()) {
+                                Log.i("Moblink", "Websocket failure $t")
+                                reconnectSoon()
                             }
                         }
-                    },
-                )
-        } catch (e: Exception) {
-            Log.i("Moblink", "Failed to build URL: $e")
-        }
+                    }
+                },
+            )
     }
 
     private fun stopInternal() {
@@ -228,14 +230,14 @@ class MainActivity : ComponentActivity() {
         destinationSocket?.close()
     }
 
-    private fun enableBackgroundProcessing() {
+    private fun acquireBackgroundProcessing() {
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         uiWakeLock =
             powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock")
         uiWakeLock?.acquire()
     }
 
-    private fun disableBackgroundProcessing() {
+    private fun releaseBackgroundProcessing() {
         uiWakeLock?.release()
     }
 
@@ -260,6 +262,7 @@ class MainActivity : ComponentActivity() {
             }
         } catch (e: Exception) {
             Log.i("Moblink", "Message handling failed: $e")
+            reconnectSoon()
         }
     }
 
