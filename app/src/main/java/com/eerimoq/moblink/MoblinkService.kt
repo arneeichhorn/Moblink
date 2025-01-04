@@ -4,14 +4,29 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
-enum class Actions {
+private enum class Actions {
     START,
     STOP,
+}
+
+fun startService(context: Context) {
+    controlService(context, Actions.START)
+}
+
+fun stopService(context: Context) {
+    controlService(context, Actions.STOP)
+}
+
+private fun controlService(context: Context, action: Actions) {
+    val intent = Intent(context, MoblinkService::class.java)
+    intent.action = action.name
+    context.startForegroundService(intent)
 }
 
 class MoblinkService : Service() {

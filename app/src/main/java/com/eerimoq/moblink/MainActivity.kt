@@ -1,7 +1,6 @@
 package com.eerimoq.moblink
 
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.ConnectivityManager.NetworkCallback
 import android.net.Network
@@ -71,9 +70,8 @@ class MainActivity : ComponentActivity() {
     private var uiSettings: Settings? = null
     private var uiStarted = false
     private var uiVersion = "?"
-    private var uiButtonText = "Start"
-    private val uiMutableButtonText = mutableStateOf(uiButtonText)
-    private val uiMutableStatus = mutableStateOf("")
+    private val uiButtonText = mutableStateOf("Start")
+    private val uiStatus = mutableStateOf("")
     private var uiWakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -121,7 +119,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 "Disconnected from streamer"
             }
-        runOnUiThread { uiMutableStatus.value = status }
+        runOnUiThread { uiStatus.value = status }
     }
 
     private fun saveSettings() {
@@ -142,13 +140,8 @@ class MainActivity : ComponentActivity() {
         }
         Log.i("Moblink", "Start")
         uiStarted = true
-        startService()
-        uiWakeLock =
-            (getSystemService(Context.POWER_SERVICE) as PowerManager).run {
-                newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock").apply {
-                    acquire()
-                }
-            }
+        startService(this)
+        enableBackgroundProcessing()
         handler?.post {
             if (started) {
                 return@post
@@ -164,8 +157,8 @@ class MainActivity : ComponentActivity() {
         }
         Log.i("Moblink", "Stop")
         uiStarted = false
-        stopService()
-        uiWakeLock?.release()
+        stopService(this)
+        disableBackgroundProcessing()
         handler?.post {
             if (!started) {
                 return@post
@@ -186,10 +179,6 @@ class MainActivity : ComponentActivity() {
                 okHttpClient.newWebSocket(
                     request,
                     object : WebSocketListener() {
-                        override fun onOpen(webSocket: WebSocket, response: Response) {
-                            super.onOpen(webSocket, response)
-                        }
-
                         override fun onMessage(webSocket: WebSocket, text: String) {
                             super.onMessage(webSocket, text)
                             handler?.post {
@@ -239,18 +228,15 @@ class MainActivity : ComponentActivity() {
         destinationSocket?.close()
     }
 
-    private fun startService() {
-        controlService(Actions.START)
+    private fun enableBackgroundProcessing() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        uiWakeLock =
+            powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock")
+        uiWakeLock?.acquire()
     }
 
-    private fun stopService() {
-        controlService(Actions.STOP)
-    }
-
-    private fun controlService(action: Actions) {
-        val intent = Intent(this, MoblinkService::class.java)
-        intent.action = action.name
-        startForegroundService(intent)
+    private fun disableBackgroundProcessing() {
+        uiWakeLock?.release()
     }
 
     private fun reconnectSoon() {
@@ -374,8 +360,8 @@ class MainActivity : ComponentActivity() {
         var streamerUrlInput by remember { mutableStateOf(uiSettings!!.streamerUrl) }
         var passwordInput by remember { mutableStateOf(uiSettings!!.password) }
         var nameInput by remember { mutableStateOf(uiSettings!!.name) }
-        val text by uiMutableButtonText
-        val status by uiMutableStatus
+        val text by uiButtonText
+        val status by uiStatus
         val focusManager = LocalFocusManager.current
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -389,49 +375,58 @@ class MainActivity : ComponentActivity() {
             )
             OutlinedTextField(
                 value = streamerUrlInput,
-                onValueChange = {
-                    streamerUrlInput = it
-                    uiSettings!!.streamerUrl = it
-                    saveSettings()
-                },
+                onValueChange = { streamerUrlInput = it },
                 label = { Text("Streamer URL") },
                 placeholder = { Text("ws://192.168.0.10:7777") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                keyboardActions =
+                    KeyboardActions(
+                        onDone = {
+                            uiSettings!!.streamerUrl = streamerUrlInput
+                            saveSettings()
+                            focusManager.clearFocus()
+                        }
+                    ),
             )
             OutlinedTextField(
                 value = passwordInput,
-                onValueChange = {
-                    passwordInput = it
-                    uiSettings!!.password = it
-                    saveSettings()
-                },
+                onValueChange = { passwordInput = it },
                 label = { Text("Password") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                keyboardActions =
+                    KeyboardActions(
+                        onDone = {
+                            uiSettings!!.password = passwordInput
+                            saveSettings()
+                            focusManager.clearFocus()
+                        }
+                    ),
             )
             OutlinedTextField(
                 value = nameInput,
-                onValueChange = {
-                    nameInput = it
-                    uiSettings!!.name = it
-                    saveSettings()
-                },
+                onValueChange = { nameInput = it },
                 label = { Text("Name") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                keyboardActions =
+                    KeyboardActions(
+                        onDone = {
+                            uiSettings!!.name = nameInput
+                            saveSettings()
+                            focusManager.clearFocus()
+                        }
+                    ),
             )
             Text(status)
             Button(
                 onClick = {
-                    if (text == "Start") {
-                        uiMutableButtonText.value = "Stop"
+                    if (!uiStarted) {
+                        uiButtonText.value = "Stop"
                         start()
                     } else {
-                        uiMutableButtonText.value = "Start"
+                        uiButtonText.value = "Start"
                         stop()
                     }
                 }
