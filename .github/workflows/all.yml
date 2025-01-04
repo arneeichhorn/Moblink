@@ -1,0 +1,15 @@
+name: All
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  all:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Source code styling
+        run: |
+          brew install ktfmt
+          make
