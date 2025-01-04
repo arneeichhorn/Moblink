@@ -9,7 +9,6 @@ import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.PowerManager
 import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -38,12 +37,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 import com.google.gson.Gson
-import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -72,7 +69,7 @@ class MainActivity : ComponentActivity() {
     private var uiVersion = "?"
     private val uiButtonText = mutableStateOf("Start")
     private val uiStatus = mutableStateOf("")
-    private var uiWakeLock: PowerManager.WakeLock? = null
+    private val wakeLock = WakeLock()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -141,13 +138,12 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Start")
         uiStarted = true
         startService(this)
-        acquireBackgroundProcessing()
+        wakeLock.acquire(this)
         handler?.post {
-            if (started) {
-                return@post
+            if (!started) {
+                started = true
+                startInternal()
             }
-            started = true
-            startInternal()
         }
     }
 
@@ -158,13 +154,12 @@ class MainActivity : ComponentActivity() {
         Log.i("Moblink", "Stop")
         uiStarted = false
         stopService(this)
-        releaseBackgroundProcessing()
+        wakeLock.release()
         handler?.post {
-            if (!started) {
-                return@post
+            if (started) {
+                started = false
+                stopInternal()
             }
-            started = false
-            stopInternal()
         }
     }
 
@@ -228,17 +223,6 @@ class MainActivity : ComponentActivity() {
         updateStatus()
         streamerSocket?.close()
         destinationSocket?.close()
-    }
-
-    private fun acquireBackgroundProcessing() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        uiWakeLock =
-            powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MoblinkService::lock")
-        uiWakeLock?.acquire()
-    }
-
-    private fun releaseBackgroundProcessing() {
-        uiWakeLock?.release()
     }
 
     private fun reconnectSoon() {
@@ -438,55 +422,5 @@ class MainActivity : ComponentActivity() {
             }
             Text("Version $uiVersion")
         }
-    }
-}
-
-private fun startStreamerReceiver(
-    streamerSocket: DatagramSocket,
-    destinationSocket: DatagramSocket,
-    destinationAddress: InetAddress,
-    destinationPort: Int,
-) {
-    thread {
-        var destinationReceiverCreated = false
-        val buffer = ByteArray(2048)
-        val packet = DatagramPacket(buffer, buffer.size)
-        try {
-            while (true) {
-                streamerSocket.receive(packet)
-                if (!destinationReceiverCreated) {
-                    startDestinationReceiver(
-                        streamerSocket,
-                        destinationSocket,
-                        packet.address,
-                        packet.port,
-                    )
-                    destinationReceiverCreated = true
-                }
-                packet.address = destinationAddress
-                packet.port = destinationPort
-                destinationSocket.send(packet)
-            }
-        } catch (_: Exception) {}
-    }
-}
-
-private fun startDestinationReceiver(
-    streamerSocket: DatagramSocket,
-    destinationSocket: DatagramSocket,
-    streamerAddress: InetAddress,
-    streamerPort: Int,
-) {
-    thread {
-        val buffer = ByteArray(2048)
-        val packet = DatagramPacket(buffer, buffer.size)
-        try {
-            while (true) {
-                destinationSocket.receive(packet)
-                packet.address = streamerAddress
-                packet.port = streamerPort
-                streamerSocket.send(packet)
-            }
-        } catch (_: Exception) {}
     }
 }
