@@ -186,7 +186,7 @@ class MainActivity : ComponentActivity() {
                 object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         super.onMessage(webSocket, text)
-                        ahandler?.post {
+                        handler?.post {
                             if (webSocket === getWebSocket()) {
                                 handleMessage(text)
                             }
