@@ -8,7 +8,6 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.Handler
-import android.os.HandlerThread
 import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -40,8 +39,6 @@ import com.google.gson.Gson
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -49,21 +46,7 @@ import okhttp3.WebSocketListener
 import okio.ByteString.Companion.encodeUtf8
 
 class MainActivity : ComponentActivity() {
-    private var webSocket: WebSocket? = null
-    private var wiFiNetwork: Network? = null
-    private var cellularNetwork: Network? = null
-    private var streamerSocket: DatagramSocket? = null
-    private var destinationSocket: DatagramSocket? = null
-    private var relayId = ""
-    private var streamerUrl = ""
-    private var password = ""
-    private var name = ""
-    private val handlerThread = HandlerThread("Something")
-    private var handler: Handler? = null
-    private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
-    private var started = false
-    private var connected = false
-    private var wrongPassword = false
+    private val relay = Relay()
     private var uiSettings: Settings? = null
     private var uiStarted = false
     private var uiVersion = "?"
@@ -86,32 +69,32 @@ class MainActivity : ComponentActivity() {
     private fun setup() {
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR)
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI)
-        handlerThread.start()
-        handler = Handler(handlerThread.looper)
+        relay.handlerThread.start()
+        relay.handler = Handler(relay.handlerThread.looper)
         uiSettings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         uiSettings!!.load()
-        streamerUrl = uiSettings!!.streamerUrl
-        password = uiSettings!!.password
-        relayId = uiSettings!!.relayId
-        name = uiSettings!!.name
+        relay.streamerUrl = uiSettings!!.streamerUrl
+        relay.password = uiSettings!!.password
+        relay.relayId = uiSettings!!.relayId
+        relay.name = uiSettings!!.name
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             uiVersion = packageInfo.versionName
         } catch (_: Exception) {}
-        handler?.post { updateStatus() }
+        relay.handler?.post { updateStatus() }
     }
 
     private fun updateStatus() {
         val status =
-            if (cellularNetwork == null) {
+            if (relay.cellularNetwork == null) {
                 "Waiting for cellular"
-            } else if (wiFiNetwork == null) {
+            } else if (relay.wiFiNetwork == null) {
                 "Waiting for WiFi"
-            } else if (connected) {
+            } else if (relay.connected) {
                 "Connected to streamer"
-            } else if (wrongPassword) {
+            } else if (relay.wrongPassword) {
                 "Wrong password"
-            } else if (started) {
+            } else if (relay.started) {
                 "Connecting to streamer"
             } else {
                 "Disconnected from streamer"
@@ -124,10 +107,10 @@ class MainActivity : ComponentActivity() {
         val streamerUrl = uiSettings!!.streamerUrl
         val password = uiSettings!!.password
         val name = uiSettings!!.name
-        handler?.post {
-            this.streamerUrl = streamerUrl
-            this.password = password
-            this.name = name
+        relay.handler?.post {
+            this.relay.streamerUrl = streamerUrl
+            this.relay.password = password
+            this.relay.name = name
         }
     }
 
@@ -139,9 +122,9 @@ class MainActivity : ComponentActivity() {
         uiStarted = true
         startService(this)
         uiWakeLock.acquire(this)
-        handler?.post {
-            if (!started) {
-                started = true
+        relay.handler?.post {
+            if (!relay.started) {
+                relay.started = true
                 startInternal()
             }
         }
@@ -155,9 +138,9 @@ class MainActivity : ComponentActivity() {
         uiStarted = false
         stopService(this)
         uiWakeLock.release()
-        handler?.post {
-            if (started) {
-                started = false
+        relay.handler?.post {
+            if (relay.started) {
+                relay.started = false
                 stopInternal()
             }
         }
@@ -165,23 +148,23 @@ class MainActivity : ComponentActivity() {
 
     private fun startInternal() {
         stopInternal()
-        if (!started) {
+        if (!relay.started) {
             return
         }
         val request =
             try {
-                Request.Builder().url(streamerUrl).build()
+                Request.Builder().url(relay.streamerUrl).build()
             } catch (e: Exception) {
                 Log.i("Moblink", "Failed to build URL: $e")
                 return
             }
-        webSocket =
-            okHttpClient.newWebSocket(
+        relay.webSocket =
+            relay.okHttpClient.newWebSocket(
                 request,
                 object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         super.onMessage(webSocket, text)
-                        handler?.post {
+                        relay.handler?.post {
                             if (webSocket === getWebSocket()) {
                                 handleMessage(text)
                             }
@@ -190,7 +173,7 @@ class MainActivity : ComponentActivity() {
 
                     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                         super.onClosed(webSocket, code, reason)
-                        handler?.post {
+                        relay.handler?.post {
                             if (webSocket === getWebSocket()) {
                                 Log.i("Moblink", "Websocket closed $reason (code $code)")
                                 reconnectSoon()
@@ -204,7 +187,7 @@ class MainActivity : ComponentActivity() {
                         response: Response?,
                     ) {
                         super.onFailure(webSocket, t, response)
-                        handler?.post {
+                        relay.handler?.post {
                             if (webSocket === getWebSocket()) {
                                 Log.i("Moblink", "Websocket failure $t")
                                 reconnectSoon()
@@ -216,22 +199,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopInternal() {
-        webSocket?.cancel()
-        webSocket = null
-        connected = false
-        wrongPassword = false
+        relay.webSocket?.cancel()
+        relay.webSocket = null
+        relay.connected = false
+        relay.wrongPassword = false
         updateStatus()
-        streamerSocket?.close()
-        destinationSocket?.close()
+        relay.streamerSocket?.close()
+        relay.destinationSocket?.close()
     }
 
     private fun reconnectSoon() {
         stopInternal()
-        handler?.postDelayed({ startInternal() }, 5000)
+        relay.handler?.postDelayed({ startInternal() }, 5000)
     }
 
     private fun getWebSocket(): WebSocket? {
-        return webSocket
+        return relay.webSocket
     }
 
     private fun handleMessage(text: String) {
@@ -251,7 +234,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleMessageHello(hello: Hello) {
-        var concatenated = "$password${hello.authentication.salt}"
+        var concatenated = "${relay.password}${hello.authentication.salt}"
         val sha256 = MessageDigest.getInstance("SHA-256")
         sha256.reset()
         var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
@@ -260,15 +243,15 @@ class MainActivity : ComponentActivity() {
         sha256.reset()
         hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
         val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
-        val identify = Identify(relayId, name, authentication)
+        val identify = Identify(relay.relayId, relay.name, authentication)
         send(MessageToServer(identify, null))
     }
 
     private fun handleMessageIdentified(identified: Identified) {
         if (identified.result.ok != null) {
-            connected = true
+            relay.connected = true
         } else if (identified.result.wrongPassword != null) {
-            wrongPassword = true
+            relay.wrongPassword = true
         }
         updateStatus()
     }
@@ -280,29 +263,29 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
-        streamerSocket?.close()
-        destinationSocket?.close()
-        if (wiFiNetwork == null || cellularNetwork == null) {
+        relay.streamerSocket?.close()
+        relay.destinationSocket?.close()
+        if (relay.wiFiNetwork == null || relay.cellularNetwork == null) {
             reconnectSoon()
             return
         }
-        streamerSocket = DatagramSocket()
-        wiFiNetwork?.bindSocket(streamerSocket)
-        destinationSocket = DatagramSocket()
-        cellularNetwork?.bindSocket(destinationSocket)
+        relay.streamerSocket = DatagramSocket()
+        relay.wiFiNetwork?.bindSocket(relay.streamerSocket)
+        relay.destinationSocket = DatagramSocket()
+        relay.cellularNetwork?.bindSocket(relay.destinationSocket)
         startStreamerReceiver(
-            streamerSocket!!,
-            destinationSocket!!,
+            relay.streamerSocket!!,
+            relay.destinationSocket!!,
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
         )
-        val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort))
+        val data = ResponseData(StartTunnelResponseData(relay.streamerSocket!!.localPort))
         val response = MessageResponse(id, Result(Empty(true), null), data)
         send(MessageToServer(null, response))
     }
 
     private fun send(message: MessageToServer) {
-        webSocket?.send(Gson().toJson(message))
+        relay.webSocket?.send(Gson().toJson(message))
     }
 
     private fun requestNetwork(transportType: Int) {
@@ -315,11 +298,11 @@ class MainActivity : ComponentActivity() {
             object : NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     super.onAvailable(network)
-                    handler?.post {
+                    relay.handler?.post {
                         if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                            cellularNetwork = network
+                            relay.cellularNetwork = network
                         } else {
-                            wiFiNetwork = network
+                            relay.wiFiNetwork = network
                         }
                         updateStatus()
                     }
@@ -327,11 +310,11 @@ class MainActivity : ComponentActivity() {
 
                 override fun onLost(network: Network) {
                     super.onLost(network)
-                    handler?.post {
+                    relay.handler?.post {
                         if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                            cellularNetwork = null
+                            relay.cellularNetwork = null
                         } else {
-                            wiFiNetwork = null
+                            relay.wiFiNetwork = null
                         }
                         updateStatus()
                     }
