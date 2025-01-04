@@ -14,3 +14,6 @@ jobs:
           brew install ktfmt
           make style
           git diff --exit-code
+      - name: Build
+        run: |
+          ./gradlew build
