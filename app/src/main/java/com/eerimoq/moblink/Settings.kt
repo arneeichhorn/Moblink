@@ -3,7 +3,7 @@ package com.eerimoq.moblink
 import android.content.SharedPreferences
 import java.util.UUID
 
-class Settings(val sharedPreferences: SharedPreferences) {
+class Settings(private val sharedPreferences: SharedPreferences) {
     var streamerUrl = ""
     var password = ""
     var relayId = ""
