@@ -13,4 +13,4 @@ jobs:
         run: |
           brew install ktfmt
           make style
-          git diff --quiet
+          git diff --exit-code
