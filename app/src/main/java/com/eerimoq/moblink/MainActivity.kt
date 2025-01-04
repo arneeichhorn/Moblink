@@ -7,8 +7,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
-import android.os.Handler
-import android.util.Base64
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -35,24 +33,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
-import com.google.gson.Gson
-import java.net.DatagramSocket
-import java.net.InetAddress
-import java.security.MessageDigest
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString.Companion.encodeUtf8
 
 class MainActivity : ComponentActivity() {
     private val relay = Relay()
-    private var uiSettings: Settings? = null
-    private var uiStarted = false
-    private var uiVersion = "?"
-    private val uiButtonText = mutableStateOf("Start")
-    private val uiStatus = mutableStateOf("")
-    private val uiWakeLock = WakeLock()
+    private var settings: Settings? = null
+    private var started = false
+    private var version = "?"
+    private val buttonText = mutableStateOf("Start")
+    private val status = mutableStateOf("")
+    private val wakeLock = WakeLock()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,223 +58,52 @@ class MainActivity : ComponentActivity() {
     private fun setup() {
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR)
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI)
-        relay.handlerThread.start()
-        relay.handler = Handler(relay.handlerThread.looper)
-        uiSettings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
-        uiSettings!!.load()
-        relay.streamerUrl = uiSettings!!.streamerUrl
-        relay.password = uiSettings!!.password
-        relay.relayId = uiSettings!!.relayId
-        relay.name = uiSettings!!.name
+        relay.setup({ status -> runOnUiThread { this.status.value = status } })
+        settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
+        settings!!.load()
+        relay.updateSettings(
+            settings!!.streamerUrl,
+            settings!!.password,
+            settings!!.relayId,
+            settings!!.name,
+        )
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
-            uiVersion = packageInfo.versionName
+            version = packageInfo.versionName
         } catch (_: Exception) {}
-        relay.handler?.post { updateStatus() }
-    }
-
-    private fun updateStatus() {
-        val status =
-            if (relay.cellularNetwork == null) {
-                "Waiting for cellular"
-            } else if (relay.wiFiNetwork == null) {
-                "Waiting for WiFi"
-            } else if (relay.connected) {
-                "Connected to streamer"
-            } else if (relay.wrongPassword) {
-                "Wrong password"
-            } else if (relay.started) {
-                "Connecting to streamer"
-            } else {
-                "Disconnected from streamer"
-            }
-        runOnUiThread { uiStatus.value = status }
+        relay.updateStatus()
     }
 
     private fun saveSettings() {
-        uiSettings!!.store()
-        val streamerUrl = uiSettings!!.streamerUrl
-        val password = uiSettings!!.password
-        val name = uiSettings!!.name
-        relay.handler?.post {
-            this.relay.streamerUrl = streamerUrl
-            this.relay.password = password
-            this.relay.name = name
-        }
+        settings!!.store()
+        relay.updateSettings(
+            settings!!.streamerUrl,
+            settings!!.password,
+            settings!!.relayId,
+            settings!!.name,
+        )
     }
 
     private fun start() {
-        if (uiStarted) {
+        if (started) {
             return
         }
         Log.i("Moblink", "Start")
-        uiStarted = true
+        started = true
         startService(this)
-        uiWakeLock.acquire(this)
-        relay.handler?.post {
-            if (!relay.started) {
-                relay.started = true
-                startInternal()
-            }
-        }
+        wakeLock.acquire(this)
+        relay.start()
     }
 
     private fun stop() {
-        if (!uiStarted) {
+        if (!started) {
             return
         }
         Log.i("Moblink", "Stop")
-        uiStarted = false
+        started = false
         stopService(this)
-        uiWakeLock.release()
-        relay.handler?.post {
-            if (relay.started) {
-                relay.started = false
-                stopInternal()
-            }
-        }
-    }
-
-    private fun startInternal() {
-        stopInternal()
-        if (!relay.started) {
-            return
-        }
-        val request =
-            try {
-                Request.Builder().url(relay.streamerUrl).build()
-            } catch (e: Exception) {
-                Log.i("Moblink", "Failed to build URL: $e")
-                return
-            }
-        relay.webSocket =
-            relay.okHttpClient.newWebSocket(
-                request,
-                object : WebSocketListener() {
-                    override fun onMessage(webSocket: WebSocket, text: String) {
-                        super.onMessage(webSocket, text)
-                        relay.handler?.post {
-                            if (webSocket === getWebSocket()) {
-                                handleMessage(text)
-                            }
-                        }
-                    }
-
-                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        super.onClosed(webSocket, code, reason)
-                        relay.handler?.post {
-                            if (webSocket === getWebSocket()) {
-                                Log.i("Moblink", "Websocket closed $reason (code $code)")
-                                reconnectSoon()
-                            }
-                        }
-                    }
-
-                    override fun onFailure(
-                        webSocket: WebSocket,
-                        t: Throwable,
-                        response: Response?,
-                    ) {
-                        super.onFailure(webSocket, t, response)
-                        relay.handler?.post {
-                            if (webSocket === getWebSocket()) {
-                                Log.i("Moblink", "Websocket failure $t")
-                                reconnectSoon()
-                            }
-                        }
-                    }
-                },
-            )
-    }
-
-    private fun stopInternal() {
-        relay.webSocket?.cancel()
-        relay.webSocket = null
-        relay.connected = false
-        relay.wrongPassword = false
-        updateStatus()
-        relay.streamerSocket?.close()
-        relay.destinationSocket?.close()
-    }
-
-    private fun reconnectSoon() {
-        stopInternal()
-        relay.handler?.postDelayed({ startInternal() }, 5000)
-    }
-
-    private fun getWebSocket(): WebSocket? {
-        return relay.webSocket
-    }
-
-    private fun handleMessage(text: String) {
-        try {
-            val message = Gson().fromJson(text, MessageToClient::class.java)
-            if (message.hello != null) {
-                handleMessageHello(message.hello)
-            } else if (message.identified != null) {
-                handleMessageIdentified(message.identified)
-            } else if (message.request != null) {
-                handleMessageRequest(message.request)
-            }
-        } catch (e: Exception) {
-            Log.i("Moblink", "Message handling failed: $e")
-            reconnectSoon()
-        }
-    }
-
-    private fun handleMessageHello(hello: Hello) {
-        var concatenated = "${relay.password}${hello.authentication.salt}"
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        sha256.reset()
-        var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
-        concatenated =
-            "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
-        sha256.reset()
-        hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
-        val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
-        val identify = Identify(relay.relayId, relay.name, authentication)
-        send(MessageToServer(identify, null))
-    }
-
-    private fun handleMessageIdentified(identified: Identified) {
-        if (identified.result.ok != null) {
-            relay.connected = true
-        } else if (identified.result.wrongPassword != null) {
-            relay.wrongPassword = true
-        }
-        updateStatus()
-    }
-
-    private fun handleMessageRequest(request: MessageRequest) {
-        if (request.data.startTunnel != null) {
-            handleMessageStartTunnelRequest(request.id, request.data.startTunnel)
-        }
-    }
-
-    private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
-        relay.streamerSocket?.close()
-        relay.destinationSocket?.close()
-        if (relay.wiFiNetwork == null || relay.cellularNetwork == null) {
-            reconnectSoon()
-            return
-        }
-        relay.streamerSocket = DatagramSocket()
-        relay.wiFiNetwork?.bindSocket(relay.streamerSocket)
-        relay.destinationSocket = DatagramSocket()
-        relay.cellularNetwork?.bindSocket(relay.destinationSocket)
-        startStreamerReceiver(
-            relay.streamerSocket!!,
-            relay.destinationSocket!!,
-            InetAddress.getByName(startTunnel.address),
-            startTunnel.port,
-        )
-        val data = ResponseData(StartTunnelResponseData(relay.streamerSocket!!.localPort))
-        val response = MessageResponse(id, Result(Empty(true), null), data)
-        send(MessageToServer(null, response))
-    }
-
-    private fun send(message: MessageToServer) {
-        relay.webSocket?.send(Gson().toJson(message))
+        wakeLock.release()
+        relay.stop()
     }
 
     private fun requestNetwork(transportType: Int) {
@@ -298,25 +116,19 @@ class MainActivity : ComponentActivity() {
             object : NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     super.onAvailable(network)
-                    relay.handler?.post {
-                        if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                            relay.cellularNetwork = network
-                        } else {
-                            relay.wiFiNetwork = network
-                        }
-                        updateStatus()
+                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
+                        relay.setCellularNetwork(network)
+                    } else {
+                        relay.setWiFiNetwork(network)
                     }
                 }
 
                 override fun onLost(network: Network) {
                     super.onLost(network)
-                    relay.handler?.post {
-                        if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                            relay.cellularNetwork = null
-                        } else {
-                            relay.wiFiNetwork = null
-                        }
-                        updateStatus()
+                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
+                        relay.setCellularNetwork(null)
+                    } else {
+                        relay.setWiFiNetwork(null)
                     }
                 }
             }
@@ -327,11 +139,11 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Main() {
-        var streamerUrlInput by remember { mutableStateOf(uiSettings!!.streamerUrl) }
-        var passwordInput by remember { mutableStateOf(uiSettings!!.password) }
-        var nameInput by remember { mutableStateOf(uiSettings!!.name) }
-        val text by uiButtonText
-        val status by uiStatus
+        var streamerUrlInput by remember { mutableStateOf(settings!!.streamerUrl) }
+        var passwordInput by remember { mutableStateOf(settings!!.password) }
+        var nameInput by remember { mutableStateOf(settings!!.name) }
+        val text by buttonText
+        val status by status
         val focusManager = LocalFocusManager.current
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -353,7 +165,7 @@ class MainActivity : ComponentActivity() {
                 keyboardActions =
                     KeyboardActions(
                         onDone = {
-                            uiSettings!!.streamerUrl = streamerUrlInput
+                            settings!!.streamerUrl = streamerUrlInput
                             saveSettings()
                             focusManager.clearFocus()
                         }
@@ -368,7 +180,7 @@ class MainActivity : ComponentActivity() {
                 keyboardActions =
                     KeyboardActions(
                         onDone = {
-                            uiSettings!!.password = passwordInput
+                            settings!!.password = passwordInput
                             saveSettings()
                             focusManager.clearFocus()
                         }
@@ -383,7 +195,7 @@ class MainActivity : ComponentActivity() {
                 keyboardActions =
                     KeyboardActions(
                         onDone = {
-                            uiSettings!!.name = nameInput
+                            settings!!.name = nameInput
                             saveSettings()
                             focusManager.clearFocus()
                         }
@@ -392,18 +204,18 @@ class MainActivity : ComponentActivity() {
             Text(status)
             Button(
                 onClick = {
-                    if (!uiStarted) {
-                        uiButtonText.value = "Stop"
+                    if (!started) {
+                        buttonText.value = "Stop"
                         start()
                     } else {
-                        uiButtonText.value = "Start"
+                        buttonText.value = "Start"
                         stop()
                     }
                 }
             ) {
                 Text(text)
             }
-            Text("Version $uiVersion")
+            Text("Version $version")
         }
     }
 }
