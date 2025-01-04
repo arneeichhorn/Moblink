@@ -12,4 +12,5 @@ jobs:
       - name: Source code styling
         run: |
           brew install ktfmt
-          make
+          make style
+          git diff --quiet
