@@ -9,6 +9,10 @@ class Settings(private val sharedPreferences: SharedPreferences) {
     var relayId = ""
     var name = ""
 
+    init {
+        load()
+    }
+
     fun load() {
         streamerUrl = sharedPreferences.getString("streamerUrl", "") ?: ""
         password = sharedPreferences.getString("password", "") ?: ""

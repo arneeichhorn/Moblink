@@ -10,22 +10,20 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 
-private enum class Actions {
-    START,
-    STOP,
-}
+private const val startAction = "Moblink:Start"
+private const val stopAction = "Moblink:Stop"
 
 fun startService(context: Context) {
-    controlService(context, Actions.START)
+    controlService(context, startAction)
 }
 
 fun stopService(context: Context) {
-    controlService(context, Actions.STOP)
+    controlService(context, stopAction)
 }
 
-private fun controlService(context: Context, action: Actions) {
+private fun controlService(context: Context, action: String) {
     val intent = Intent(context, MoblinkService::class.java)
-    intent.action = action.name
+    intent.action = action
     context.startForegroundService(intent)
 }
 
@@ -41,10 +39,7 @@ class MoblinkService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == Actions.START.name) {
-            Log.i("Moblink", "Start service")
-        } else {
-            Log.i("Moblink", "Stop service")
+        if (intent?.action == stopAction) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }

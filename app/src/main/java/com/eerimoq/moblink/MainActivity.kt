@@ -55,22 +55,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setup() {
-        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR)
-        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI)
+        wakeLock.setup(this)
+        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
+        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
-        settings!!.load()
-        relay.setup { status -> runOnUiThread { this.status.value = status } }
-        relay.updateSettings(
+        relay.setup(
             settings!!.relayId,
             settings!!.streamerUrl,
             settings!!.password,
             settings!!.name,
-        )
+        ) { status ->
+            runOnUiThread { this.status.value = status }
+        }
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
         } catch (_: Exception) {}
-        relay.updateStatus()
     }
 
     private fun saveSettings() {
@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
         }
         started = true
         startService(this)
-        wakeLock.acquire(this)
+        wakeLock.acquire()
         relay.start()
     }
 
@@ -103,35 +103,43 @@ class MainActivity : ComponentActivity() {
         relay.stop()
     }
 
-    private fun requestNetwork(transportType: Int) {
+    private fun requestNetwork(transportType: Int, networkCallback: NetworkCallback) {
         val networkRequest =
             NetworkRequest.Builder()
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .addTransportType(transportType)
                 .build()
-        val networkCallback =
-            object : NetworkCallback() {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager.requestNetwork(networkRequest, networkCallback)
+    }
+
+    private fun createCellularNetworkRequest(): NetworkCallback {
+        return object : NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     super.onAvailable(network)
-                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                        relay.setCellularNetwork(network)
-                    } else {
-                        relay.setWiFiNetwork(network)
-                    }
+                    relay.setCellularNetwork(network)
                 }
 
                 override fun onLost(network: Network) {
                     super.onLost(network)
-                    if (transportType == NetworkCapabilities.TRANSPORT_CELLULAR) {
-                        relay.setCellularNetwork(null)
-                    } else {
-                        relay.setWiFiNetwork(null)
-                    }
+                    relay.setCellularNetwork(null)
                 }
             }
-        val connectivityManager =
-            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        connectivityManager.requestNetwork(networkRequest, networkCallback)
+    }
+
+    private fun createWiFiNetworkRequest(): NetworkCallback {
+        return object : NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                relay.setWiFiNetwork(network)
+            }
+
+            override fun onLost(network: Network) {
+                super.onLost(network)
+                relay.setWiFiNetwork(null)
+            }
+        }
     }
 
     @Composable

@@ -37,10 +37,23 @@ class Relay {
     private var wrongPassword = false
     private var onStatusUpdated: ((String) -> Unit)? = null
 
-    fun setup(onStatusUpdated: ((String) -> Unit)?) {
+    fun setup(
+        relayId: String,
+        streamerUrl: String,
+        password: String,
+        name: String,
+        onStatusUpdated: ((String) -> Unit)?,
+    ) {
         this.onStatusUpdated = onStatusUpdated
         handlerThread.start()
         handler = Handler(handlerThread.looper)
+        handler?.post {
+            this.relayId = relayId
+            this.streamerUrl = streamerUrl
+            this.password = password
+            this.name = name
+            updateStatusInternal()
+        }
     }
 
     fun start() {
@@ -59,10 +72,6 @@ class Relay {
                 stopInternal()
             }
         }
-    }
-
-    fun updateStatus() {
-        handler?.post { updateStatusInternal() }
     }
 
     fun updateSettings(relayId: String, streamerUrl: String, password: String, name: String) {
