@@ -88,7 +88,6 @@ class MainActivity : ComponentActivity() {
         if (started) {
             return
         }
-        Log.i("Moblink", "Start")
         started = true
         startService(this)
         wakeLock.acquire(this)
@@ -99,7 +98,6 @@ class MainActivity : ComponentActivity() {
         if (!started) {
             return
         }
-        Log.i("Moblink", "Stop")
         started = false
         stopService(this)
         wakeLock.release()
