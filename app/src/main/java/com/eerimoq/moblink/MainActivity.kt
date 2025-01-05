@@ -154,49 +154,40 @@ class MainActivity : ComponentActivity() {
             )
             OutlinedTextField(
                 value = streamerUrlInput,
-                onValueChange = { streamerUrlInput = it },
+                onValueChange = {
+                    streamerUrlInput = it
+                    settings!!.streamerUrl = streamerUrlInput
+                    saveSettings()
+                },
                 label = { Text("Streamer URL") },
                 placeholder = { Text("ws://192.168.0.10:7777") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions =
-                    KeyboardActions(
-                        onDone = {
-                            settings!!.streamerUrl = streamerUrlInput
-                            saveSettings()
-                            focusManager.clearFocus()
-                        }
-                    ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
             OutlinedTextField(
                 value = passwordInput,
-                onValueChange = { passwordInput = it },
+                onValueChange = {
+                    passwordInput = it
+                    settings!!.password = passwordInput
+                    saveSettings()
+                },
                 label = { Text("Password") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions =
-                    KeyboardActions(
-                        onDone = {
-                            settings!!.password = passwordInput
-                            saveSettings()
-                            focusManager.clearFocus()
-                        }
-                    ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
             OutlinedTextField(
                 value = nameInput,
-                onValueChange = { nameInput = it },
+                onValueChange = {
+                    nameInput = it
+                    settings!!.name = nameInput
+                    saveSettings()
+                },
                 label = { Text("Name") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions =
-                    KeyboardActions(
-                        onDone = {
-                            settings!!.name = nameInput
-                            saveSettings()
-                            focusManager.clearFocus()
-                        }
-                    ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
             Text(status)
             Button(
