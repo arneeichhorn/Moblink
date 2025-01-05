@@ -32,7 +32,6 @@ class MoblinkService : Service() {
     }
 
     override fun onCreate() {
-        super.onCreate()
         createNotificationChannel()
         startForegroundService()
     }

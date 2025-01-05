@@ -117,12 +117,10 @@ class MainActivity : ComponentActivity() {
     private fun createCellularNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
-                super.onAvailable(network)
                 relay.setCellularNetwork(network)
             }
 
             override fun onLost(network: Network) {
-                super.onLost(network)
                 relay.setCellularNetwork(null)
             }
         }
@@ -131,12 +129,10 @@ class MainActivity : ComponentActivity() {
     private fun createWiFiNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
-                super.onAvailable(network)
                 relay.setWiFiNetwork(network)
             }
 
             override fun onLost(network: Network) {
-                super.onLost(network)
                 relay.setWiFiNetwork(null)
             }
         }
