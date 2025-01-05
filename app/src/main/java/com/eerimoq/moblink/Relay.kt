@@ -20,6 +20,7 @@ import okhttp3.WebSocketListener
 import okio.ByteString.Companion.encodeUtf8
 
 class Relay {
+    private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var webSocket: WebSocket? = null
     private var wiFiNetwork: Network? = null
     private var cellularNetwork: Network? = null
@@ -31,7 +32,6 @@ class Relay {
     private var name = ""
     private val handlerThread = HandlerThread("Something")
     private var handler: Handler? = null
-    private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var started = false
     private var connected = false
     private var wrongPassword = false
@@ -65,11 +65,11 @@ class Relay {
         handler?.post { updateStatusInternal() }
     }
 
-    fun updateSettings(streamerUrl: String, password: String, relayId: String, name: String) {
+    fun updateSettings(relayId: String, streamerUrl: String, password: String, name: String) {
         handler?.post {
+            this.relayId = relayId
             this.streamerUrl = streamerUrl
             this.password = password
-            this.relayId = relayId
             this.name = name
         }
     }
@@ -240,7 +240,7 @@ class Relay {
             startTunnel.port,
         )
         val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort))
-        val response = MessageResponse(id, Result(Empty(true), null), data)
+        val response = MessageResponse(id, Result(Present(), null), data)
         send(MessageToServer(null, response))
     }
 

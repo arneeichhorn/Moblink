@@ -7,7 +7,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -58,13 +57,13 @@ class MainActivity : ComponentActivity() {
     private fun setup() {
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR)
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI)
-        relay.setup({ status -> runOnUiThread { this.status.value = status } })
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         settings!!.load()
+        relay.setup { status -> runOnUiThread { this.status.value = status } }
         relay.updateSettings(
+            settings!!.relayId,
             settings!!.streamerUrl,
             settings!!.password,
-            settings!!.relayId,
             settings!!.name,
         )
         try {
@@ -77,9 +76,9 @@ class MainActivity : ComponentActivity() {
     private fun saveSettings() {
         settings!!.store()
         relay.updateSettings(
+            settings!!.relayId,
             settings!!.streamerUrl,
             settings!!.password,
-            settings!!.relayId,
             settings!!.name,
         )
     }

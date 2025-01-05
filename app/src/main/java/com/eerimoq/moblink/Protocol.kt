@@ -1,8 +1,8 @@
 package com.eerimoq.moblink
 
-data class Empty(val dummy: Boolean?)
+data class Present(val dummy: Boolean? = null)
 
-data class Result(val ok: Empty?, val wrongPassword: Empty?)
+data class Result(val ok: Present?, val wrongPassword: Present?)
 
 data class Authentication(val challenge: String, val salt: String)
 
