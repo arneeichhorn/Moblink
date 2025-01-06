@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
 import android.util.Log
+import androidx.compose.runtime.mutableStateOf
 import com.google.gson.Gson
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -37,6 +38,9 @@ class Relay {
     private var wrongPassword = false
     private var onStatusUpdated: ((String) -> Unit)? = null
     private var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
+    val uiButtonText = mutableStateOf("Start")
+    val uiStatus = mutableStateOf("")
+    var uiStarted = false
 
     fun setup(
         relayId: String,

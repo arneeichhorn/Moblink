@@ -49,27 +49,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 
+private const val maximumNumberOfRelays = 5
+
 class MainActivity : ComponentActivity() {
     private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
     private var settings: Settings? = null
     private var version = "?"
-    private val buttonTexts =
-        arrayOf(
-            mutableStateOf("Start"),
-            mutableStateOf("Start"),
-            mutableStateOf("Start"),
-            mutableStateOf("Start"),
-            mutableStateOf("Start"),
-        )
-    private val statuses =
-        arrayOf(
-            mutableStateOf(""),
-            mutableStateOf(""),
-            mutableStateOf(""),
-            mutableStateOf(""),
-            mutableStateOf(""),
-        )
-    private var relaysStarted = arrayOf(false, false, false, false, false)
     private val wakeLock = WakeLock()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -80,7 +65,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        for (relayIndex in 0..4) {
+        for (relayIndex in 0 until maximumNumberOfRelays) {
             stop(relayIndex)
         }
         super.onDestroy()
@@ -90,13 +75,13 @@ class MainActivity : ComponentActivity() {
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         val database = settings!!.database
-        for (relayIndex in 0..4) {
+        for (relayIndex in 0 until maximumNumberOfRelays) {
             relays[relayIndex].setup(
                 database.relayId,
                 database.relays[relayIndex].streamerUrl,
                 database.relays[relayIndex].password,
                 database.name,
-                { status -> runOnUiThread { this.statuses[relayIndex].value = status } },
+                { status -> runOnUiThread { this.relays[relayIndex].uiStatus.value = status } },
                 { callback -> getBatteryPercentage(callback) },
             )
         }
@@ -110,7 +95,7 @@ class MainActivity : ComponentActivity() {
 
     private fun saveSettings() {
         settings!!.store()
-        for (relayIndex in 0..4) {
+        for (relayIndex in 0 until maximumNumberOfRelays) {
             relays[relayIndex].updateSettings(
                 settings!!.database.relayId,
                 settings!!.database.relays[relayIndex].streamerUrl,
@@ -126,12 +111,12 @@ class MainActivity : ComponentActivity() {
             startService(this)
             wakeLock.acquire()
         }
-        relaysStarted[relayIndex] = true
+        relays[relayIndex].uiStarted = true
         relays[relayIndex].start()
     }
 
     private fun stop(relayIndex: Int) {
-        relaysStarted[relayIndex] = false
+        relays[relayIndex].uiStarted = false
         if (!isStarted()) {
             Log.i("Moblink", "Stop")
             stopService(this)
@@ -141,7 +126,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isStarted(): Boolean {
-        return relaysStarted.contains(true)
+        return relays.any { it.uiStarted }
     }
 
     private fun getBatteryPercentage(callback: (Int) -> Unit) {
@@ -166,14 +151,14 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relayIndex in 0..4) {
+                for (relayIndex in 0 until maximumNumberOfRelays) {
                     relays[relayIndex].setCellularNetwork(network)
                 }
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relayIndex in 0..4) {
+                for (relayIndex in 0 until maximumNumberOfRelays) {
                     relays[relayIndex].setCellularNetwork(null)
                 }
             }
@@ -184,14 +169,14 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relayIndex in 0..4) {
+                for (relayIndex in 0 until maximumNumberOfRelays) {
                     relays[relayIndex].setWiFiNetwork(network)
                 }
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relayIndex in 0..4) {
+                for (relayIndex in 0 until maximumNumberOfRelays) {
                     relays[relayIndex].setWiFiNetwork(null)
                 }
             }
@@ -225,7 +210,7 @@ class MainActivity : ComponentActivity() {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
-            val pagerState = rememberPagerState(pageCount = { 5 })
+            val pagerState = rememberPagerState(pageCount = { maximumNumberOfRelays })
             Row(
                 Modifier.wrapContentHeight()
                     .fillMaxWidth()
@@ -251,8 +236,8 @@ class MainActivity : ComponentActivity() {
                     val relay = settings!!.database.relays[relayIndex]
                     var streamerUrlInput by remember { mutableStateOf(relay.streamerUrl) }
                     var passwordInput by remember { mutableStateOf(relay.password) }
-                    val status by statuses[relayIndex]
-                    val text by buttonTexts[relayIndex]
+                    val status by relays[relayIndex].uiStatus
+                    val text by relays[relayIndex].uiButtonText
                     OutlinedTextField(
                         value = streamerUrlInput,
                         onValueChange = {
@@ -282,11 +267,11 @@ class MainActivity : ComponentActivity() {
                     Button(
                         modifier = Modifier.padding(10.dp),
                         onClick = {
-                            if (!relaysStarted[relayIndex]) {
-                                buttonTexts[relayIndex].value = "Stop"
+                            if (!relays[relayIndex].uiStarted) {
+                                relays[relayIndex].uiButtonText.value = "Stop"
                                 start(relayIndex)
                             } else {
-                                buttonTexts[relayIndex].value = "Start"
+                                relays[relayIndex].uiButtonText.value = "Start"
                                 stop(relayIndex)
                             }
                         },
