@@ -36,15 +36,18 @@ class Relay {
     private var connected = false
     private var wrongPassword = false
     private var onStatusUpdated: ((String) -> Unit)? = null
+    private var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
 
     fun setup(
         relayId: String,
         streamerUrl: String,
         password: String,
         name: String,
-        onStatusUpdated: ((String) -> Unit)?,
+        onStatusUpdated: (String) -> Unit,
+        getBatteryPercentage: ((Int) -> Unit) -> Unit,
     ) {
         this.onStatusUpdated = onStatusUpdated
+        this.getBatteryPercentage = getBatteryPercentage
         handlerThread.start()
         handler = Handler(handlerThread.looper)
         handler?.post {
@@ -228,6 +231,8 @@ class Relay {
     private fun handleMessageRequest(request: MessageRequest) {
         if (request.data.startTunnel != null) {
             handleMessageStartTunnelRequest(request.id, request.data.startTunnel)
+        } else if (request.data.status != null) {
+            handleMessageStatus(request.id)
         }
     }
 
@@ -248,9 +253,21 @@ class Relay {
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
         )
-        val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort))
+        val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort), null)
         val response = MessageResponse(id, Result(Present(), null), data)
         send(MessageToServer(null, response))
+    }
+
+    private fun handleMessageStatus(id: Int) {
+        getBatteryPercentage?.let {
+            it { batteryPercentage ->
+                handler?.post {
+                    val data = ResponseData(null, StatusResponseData(batteryPercentage))
+                    val response = MessageResponse(id, Result(Present(), null), data)
+                    send(MessageToServer(null, response))
+                }
+            }
+        }
     }
 
     private fun send(message: MessageToServer) {

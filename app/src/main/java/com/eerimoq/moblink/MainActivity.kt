@@ -6,6 +6,7 @@ import android.net.ConnectivityManager.NetworkCallback
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.os.BatteryManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -62,9 +63,9 @@ class MainActivity : ComponentActivity() {
             settings!!.streamerUrl,
             settings!!.password,
             settings!!.name,
-        ) { status ->
-            runOnUiThread { this.status.value = status }
-        }
+            { status -> runOnUiThread { this.status.value = status } },
+            { callback -> getBatteryPercentage(callback) },
+        )
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
@@ -101,6 +102,13 @@ class MainActivity : ComponentActivity() {
         stopService(this)
         wakeLock.release()
         relay.stop()
+    }
+
+    private fun getBatteryPercentage(callback: (Int) -> Unit) {
+        runOnUiThread {
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            callback(batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
+        }
     }
 
     private fun requestNetwork(transportType: Int, networkCallback: NetworkCallback) {

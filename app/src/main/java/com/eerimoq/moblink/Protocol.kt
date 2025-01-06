@@ -12,13 +12,15 @@ data class Identified(val result: Result)
 
 data class StartTunnelRequest(val address: String, val port: Int)
 
-data class MessageRequestData(val startTunnel: StartTunnelRequest?)
+data class MessageRequestData(val startTunnel: StartTunnelRequest?, val status: Present?)
 
 data class MessageRequest(val id: Int, val data: MessageRequestData)
 
 data class StartTunnelResponseData(val port: Int)
 
-data class ResponseData(val startTunnel: StartTunnelResponseData?)
+data class StatusResponseData(val batteryPercentage: Int?)
+
+data class ResponseData(val startTunnel: StartTunnelResponseData?, val status: StatusResponseData?)
 
 data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
 
