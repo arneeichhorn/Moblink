@@ -56,8 +56,6 @@ class MainActivity : ComponentActivity() {
 
     private fun setup() {
         wakeLock.setup(this)
-        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
-        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         relay.setup(
             settings!!.relayId,
@@ -71,6 +69,8 @@ class MainActivity : ComponentActivity() {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
         } catch (_: Exception) {}
+        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
+        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
     }
 
     private fun saveSettings() {
@@ -117,10 +117,12 @@ class MainActivity : ComponentActivity() {
     private fun createCellularNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
+                super.onAvailable(network)
                 relay.setCellularNetwork(network)
             }
 
             override fun onLost(network: Network) {
+                super.onLost(network)
                 relay.setCellularNetwork(null)
             }
         }
@@ -129,10 +131,12 @@ class MainActivity : ComponentActivity() {
     private fun createWiFiNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
+                super.onAvailable(network)
                 relay.setWiFiNetwork(network)
             }
 
             override fun onLost(network: Network) {
+                super.onLost(network)
                 relay.setWiFiNetwork(null)
             }
         }
