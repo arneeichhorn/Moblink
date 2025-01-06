@@ -1,6 +1,10 @@
 # Moblink
 
-Android Moblink relay app.
+Use spare Android phones as extra SRTLA bonding connections. The same
+functionality is part of [Moblin](https://github.com/eerimoq/moblin) on iOS.
+
+Make sure to disable energy saving settings in the phone, and allow
+notifications from Moblink(?).
 
 There is probably an APK available here: https://mys-lang.org
 
