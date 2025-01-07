@@ -217,11 +217,9 @@ class Relay {
     private fun handleMessageHello(hello: Hello) {
         var concatenated = "$password${hello.authentication.salt}"
         val sha256 = MessageDigest.getInstance("SHA-256")
-        sha256.reset()
         var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
         concatenated =
             "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
-        sha256.reset()
         hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
         val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
         val identify = Identify(relayId, name, authentication)
