@@ -87,6 +87,7 @@ class Relay {
             this.streamerUrl = streamerUrl
             this.password = password
             this.name = name
+            updateStatusInternal()
         }
     }
 
@@ -168,7 +169,11 @@ class Relay {
 
     private fun updateStatusInternal() {
         val status =
-            if (cellularNetwork == null) {
+            if (streamerUrl.isEmpty()) {
+                "Streamer URL empty"
+            } else if (password.isEmpty()) {
+                "Password empty"
+            } else if (cellularNetwork == null) {
                 "Waiting for cellular"
             } else if (wiFiNetwork == null) {
                 "Waiting for WiFi"

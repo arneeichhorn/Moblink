@@ -12,7 +12,8 @@ class RelaySettings {
 class Database {
     var relayId = UUID.randomUUID().toString()
     var name = "Relay"
-    var relays = arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
+    var relays =
+        arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
 }
 
 class Settings(private val sharedPreferences: SharedPreferences) {
