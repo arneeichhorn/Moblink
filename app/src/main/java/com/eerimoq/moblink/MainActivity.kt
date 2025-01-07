@@ -49,8 +49,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 
-private const val maximumNumberOfRelays = 5
-
 class MainActivity : ComponentActivity() {
     private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
     private var settings: Settings? = null
@@ -65,8 +63,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        for (relayIndex in 0 until maximumNumberOfRelays) {
-            stop(relayIndex)
+        for (relay in relays) {
+            stop(relay)
         }
         super.onDestroy()
     }
@@ -75,13 +73,13 @@ class MainActivity : ComponentActivity() {
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         val database = settings!!.database
-        for (relayIndex in 0 until maximumNumberOfRelays) {
-            relays[relayIndex].setup(
+        for ((relay, relaySettings) in relays.zip(database.relays)) {
+            relay.setup(
                 database.relayId,
-                database.relays[relayIndex].streamerUrl,
-                database.relays[relayIndex].password,
+                relaySettings.streamerUrl,
+                relaySettings.password,
                 database.name,
-                { status -> runOnUiThread { this.relays[relayIndex].uiStatus.value = status } },
+                { status -> runOnUiThread { relay.uiStatus.value = status } },
                 { callback -> getBatteryPercentage(callback) },
             )
         }
@@ -95,34 +93,35 @@ class MainActivity : ComponentActivity() {
 
     private fun saveSettings() {
         settings!!.store()
-        for (relayIndex in 0 until maximumNumberOfRelays) {
-            relays[relayIndex].updateSettings(
-                settings!!.database.relayId,
-                settings!!.database.relays[relayIndex].streamerUrl,
-                settings!!.database.relays[relayIndex].password,
-                settings!!.database.name,
+        val database = settings!!.database
+        for ((relay, relaySettings) in relays.zip(database.relays)) {
+            relay.updateSettings(
+                database.relayId,
+                relaySettings.streamerUrl,
+                relaySettings.password,
+                database.name,
             )
         }
     }
 
-    private fun start(relayIndex: Int) {
+    private fun start(relay: Relay) {
         if (!isStarted()) {
             Log.i("Moblink", "Start")
             startService(this)
             wakeLock.acquire()
         }
-        relays[relayIndex].uiStarted = true
-        relays[relayIndex].start()
+        relay.uiStarted = true
+        relay.start()
     }
 
-    private fun stop(relayIndex: Int) {
-        relays[relayIndex].uiStarted = false
+    private fun stop(relay: Relay) {
+        relay.uiStarted = false
         if (!isStarted()) {
             Log.i("Moblink", "Stop")
             stopService(this)
             wakeLock.release()
         }
-        relays[relayIndex].stop()
+        relay.stop()
     }
 
     private fun isStarted(): Boolean {
@@ -151,15 +150,15 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relayIndex in 0 until maximumNumberOfRelays) {
-                    relays[relayIndex].setCellularNetwork(network)
+                for (relay in relays) {
+                    relay.setCellularNetwork(network)
                 }
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relayIndex in 0 until maximumNumberOfRelays) {
-                    relays[relayIndex].setCellularNetwork(null)
+                for (relay in relays) {
+                    relay.setCellularNetwork(null)
                 }
             }
         }
@@ -169,15 +168,15 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relayIndex in 0 until maximumNumberOfRelays) {
-                    relays[relayIndex].setWiFiNetwork(network)
+                for (relay in relays) {
+                    relay.setWiFiNetwork(network)
                 }
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relayIndex in 0 until maximumNumberOfRelays) {
-                    relays[relayIndex].setWiFiNetwork(null)
+                for (relay in relays) {
+                    relay.setWiFiNetwork(null)
                 }
             }
         }
@@ -210,7 +209,7 @@ class MainActivity : ComponentActivity() {
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
-            val pagerState = rememberPagerState(pageCount = { maximumNumberOfRelays })
+            val pagerState = rememberPagerState(pageCount = { relays.count() })
             Row(
                 Modifier.wrapContentHeight()
                     .fillMaxWidth()
@@ -233,16 +232,17 @@ class MainActivity : ComponentActivity() {
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    val relay = settings!!.database.relays[relayIndex]
-                    var streamerUrlInput by remember { mutableStateOf(relay.streamerUrl) }
-                    var passwordInput by remember { mutableStateOf(relay.password) }
-                    val status by relays[relayIndex].uiStatus
-                    val text by relays[relayIndex].uiButtonText
+                    val relay = relays[relayIndex]
+                    val relaySettings = settings!!.database.relays[relayIndex]
+                    var streamerUrlInput by remember { mutableStateOf(relaySettings.streamerUrl) }
+                    var passwordInput by remember { mutableStateOf(relaySettings.password) }
+                    val status by relay.uiStatus
+                    val text by relay.uiButtonText
                     OutlinedTextField(
                         value = streamerUrlInput,
                         onValueChange = {
                             streamerUrlInput = it
-                            relay.streamerUrl = streamerUrlInput
+                            relaySettings.streamerUrl = streamerUrlInput
                             saveSettings()
                         },
                         label = { Text("Streamer URL") },
@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity() {
                         value = passwordInput,
                         onValueChange = {
                             passwordInput = it
-                            relay.password = passwordInput
+                            relaySettings.password = passwordInput
                             saveSettings()
                         },
                         label = { Text("Password") },
@@ -267,12 +267,12 @@ class MainActivity : ComponentActivity() {
                     Button(
                         modifier = Modifier.padding(10.dp),
                         onClick = {
-                            if (!relays[relayIndex].uiStarted) {
-                                relays[relayIndex].uiButtonText.value = "Stop"
-                                start(relayIndex)
+                            if (!relay.uiStarted) {
+                                relay.uiButtonText.value = "Stop"
+                                start(relay)
                             } else {
-                                relays[relayIndex].uiButtonText.value = "Start"
-                                stop(relayIndex)
+                                relay.uiButtonText.value = "Start"
+                                stop(relay)
                             }
                         },
                     ) {
