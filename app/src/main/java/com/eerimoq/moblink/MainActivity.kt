@@ -115,8 +115,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stop(relay: Relay) {
+        val wasStarted = isStarted()
         relay.uiStarted = false
-        if (!isStarted()) {
+        if (wasStarted && !isStarted()) {
             Log.i("Moblink", "Stop")
             stopService(this)
             wakeLock.release()
