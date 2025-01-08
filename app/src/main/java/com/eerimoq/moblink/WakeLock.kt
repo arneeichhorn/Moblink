@@ -6,6 +6,7 @@ import android.os.PowerManager
 
 class WakeLock {
     private var wakeLock: PowerManager.WakeLock? = null
+    private var acquired = false
 
     fun setup(context: Context) {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -14,10 +15,16 @@ class WakeLock {
 
     @SuppressLint("WakelockTimeout")
     fun acquire() {
-        wakeLock?.acquire()
+        if (!acquired) {
+            wakeLock?.acquire()
+            acquired = true
+        }
     }
 
     fun release() {
-        wakeLock?.release()
+        if (acquired) {
+            wakeLock?.release()
+            acquired = false
+        }
     }
 }

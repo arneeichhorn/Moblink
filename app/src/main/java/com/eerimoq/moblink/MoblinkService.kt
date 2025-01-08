@@ -1,8 +1,8 @@
 package com.eerimoq.moblink
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -33,7 +33,7 @@ class MoblinkService : Service() {
 
     override fun onCreate() {
         createNotificationChannel()
-        startForegroundService()
+        startForeground(1, createNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -59,17 +59,11 @@ class MoblinkService : Service() {
         manager?.createNotificationChannel(serviceChannel)
     }
 
-    private fun startForegroundService() {
-        val notificationIntent = Intent(this, MainActivity::class.java)
-        val pendingIntent =
-            PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE)
-        val notification =
-            NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle("Moblink")
-                .setContentText("Moblink relay active?")
-                .setContentIntent(pendingIntent)
-                .build()
-        startForeground(1, notification)
+    private fun createNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Moblink")
+            .setContentText("Relay started")
+            .build()
     }
 }

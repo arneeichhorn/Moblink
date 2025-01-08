@@ -200,7 +200,7 @@ class Relay {
 
     private fun handleMessage(text: String) {
         try {
-            val message = Gson().fromJson(text, MessageToClient::class.java)
+            val message = Gson().fromJson(text, MessageToRelay::class.java)
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
@@ -216,14 +216,9 @@ class Relay {
 
     private fun handleMessageHello(hello: Hello) {
         var concatenated = "$password${hello.authentication.salt}"
-        val sha256 = MessageDigest.getInstance("SHA-256")
-        var hash: ByteArray = sha256.digest(concatenated.encodeUtf8().toByteArray())
-        concatenated =
-            "${Base64.encodeToString(hash, Base64.NO_WRAP)}${hello.authentication.challenge}"
-        hash = sha256.digest(concatenated.encodeUtf8().toByteArray())
-        val authentication = Base64.encodeToString(hash, Base64.NO_WRAP)
-        val identify = Identify(relayId, name, authentication)
-        send(MessageToServer(identify, null))
+        concatenated = "${base64Encode(calcSha256(concatenated))}${hello.authentication.challenge}"
+        val identify = Identify(relayId, name, base64Encode(calcSha256(concatenated)))
+        send(MessageToStreamer(identify, null))
     }
 
     private fun handleMessageIdentified(identified: Identified) {
@@ -262,7 +257,7 @@ class Relay {
         )
         val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort), null)
         val response = MessageResponse(id, Result(Present(), null), data)
-        send(MessageToServer(null, response))
+        send(MessageToStreamer(null, response))
     }
 
     private fun handleMessageStatus(id: Int) {
@@ -271,13 +266,13 @@ class Relay {
                 handler?.post {
                     val data = ResponseData(null, StatusResponseData(batteryPercentage))
                     val response = MessageResponse(id, Result(Present(), null), data)
-                    send(MessageToServer(null, response))
+                    send(MessageToStreamer(null, response))
                 }
             }
         }
     }
 
-    private fun send(message: MessageToServer) {
+    private fun send(message: MessageToStreamer) {
         webSocket?.send(Gson().toJson(message))
     }
 }
@@ -330,4 +325,13 @@ private fun startDestinationReceiver(
             }
         } catch (_: Exception) {}
     }
+}
+
+private fun base64Encode(input: ByteArray): String {
+    return Base64.encodeToString(input, Base64.NO_WRAP)
+}
+
+private fun calcSha256(data: String): ByteArray {
+    val sha256 = MessageDigest.getInstance("SHA-256")
+    return sha256.digest(data.encodeUtf8().toByteArray())
 }

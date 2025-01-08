@@ -8,7 +8,6 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.BatteryManager
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -106,7 +105,6 @@ class MainActivity : ComponentActivity() {
 
     private fun start(relay: Relay) {
         if (!isStarted()) {
-            Log.i("Moblink", "Start")
             startService(this)
             wakeLock.acquire()
         }
@@ -115,14 +113,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stop(relay: Relay) {
-        val wasStarted = isStarted()
         relay.uiStarted = false
-        if (wasStarted && !isStarted()) {
-            Log.i("Moblink", "Stop")
+        relay.stop()
+        if (!isStarted()) {
             stopService(this)
             wakeLock.release()
         }
-        relay.stop()
     }
 
     private fun isStarted(): Boolean {

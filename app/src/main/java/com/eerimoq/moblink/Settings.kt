@@ -27,15 +27,7 @@ class Settings(private val sharedPreferences: SharedPreferences) {
         val value = sharedPreferences.getString("database", "{}") ?: "{}"
         try {
             database = Gson().fromJson(value, Database::class.java)
-        } catch (_: Exception) {
-            // Migrate from old database.
-            database.relays[0].streamerUrl = sharedPreferences.getString("streamerUrl", "") ?: ""
-            database.relays[0].password = sharedPreferences.getString("password", "") ?: ""
-            val uuid = UUID.randomUUID().toString()
-            database.relayId = sharedPreferences.getString("relayId", uuid) ?: uuid
-            database.name = sharedPreferences.getString("name", "Relay") ?: "Relay"
-            store()
-        }
+        } catch (_: Exception) {}
     }
 
     fun store() {
