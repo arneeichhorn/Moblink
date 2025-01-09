@@ -1,3 +1,5 @@
+[<img src="docs/google-play-badge.png">](https://play.google.com/store/apps)
+
 # Moblink
 
 Use spare Android phones as extra SRTLA bonding connections. The same

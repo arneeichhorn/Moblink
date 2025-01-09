@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -179,106 +180,144 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalFoundationApi::class)
     @Composable
     fun Main() {
-        var nameInput by remember { mutableStateOf(settings!!.database.name) }
-        val focusManager = LocalFocusManager.current
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("Moblink relay", fontSize = 30.sp)
-            Image(
-                painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                contentDescription = null,
-            )
-            OutlinedTextField(
-                value = nameInput,
-                onValueChange = {
-                    nameInput = it
-                    settings!!.database.name = nameInput
-                    saveSettings()
-                },
-                label = { Text("Name") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-            )
-            val pagerState = rememberPagerState(pageCount = { relays.count() })
-            Row(
-                Modifier.wrapContentHeight()
-                    .fillMaxWidth()
-                    .align(Alignment.CenterHorizontally)
-                    .padding(top = 20.dp),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                repeat(relays.count()) { relayIndex ->
-                    val color =
-                        if (pagerState.currentPage == relayIndex) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.inversePrimary
-                    Box(
-                        modifier =
-                            Modifier.padding(2.dp).clip(CircleShape).background(color).size(10.dp)
-                    )
-                }
-            }
-            HorizontalPager(state = pagerState) { relayIndex ->
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    val relay = relays[relayIndex]
-                    val relaySettings = settings!!.database.relays[relayIndex]
-                    var streamerUrlInput by remember { mutableStateOf(relaySettings.streamerUrl) }
-                    var passwordInput by remember { mutableStateOf(relaySettings.password) }
-                    val status by relay.uiStatus
-                    val text by relay.uiButtonText
-                    OutlinedTextField(
-                        value = streamerUrlInput,
-                        onValueChange = {
-                            streamerUrlInput = it
-                            relaySettings.streamerUrl = streamerUrlInput
-                            saveSettings()
-                        },
-                        label = { Text("Streamer URL") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    )
-                    OutlinedTextField(
-                        modifier = Modifier.padding(bottom = 15.dp),
-                        value = passwordInput,
-                        onValueChange = {
-                            passwordInput = it
-                            relaySettings.password = passwordInput
-                            saveSettings()
-                        },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                    )
-                    Text(status)
-                    Button(
-                        modifier = Modifier.padding(10.dp),
-                        onClick = {
-                            if (!relay.uiStarted) {
-                                relay.uiButtonText.value = "Stop"
-                                start(relay)
-                            } else {
-                                relay.uiButtonText.value = "Start"
-                                stop(relay)
-                            }
-                        },
-                    ) {
-                        Text(text)
-                    }
-                }
-            }
+            AppIcon()
+            NameField()
+            Streamers()
             Text("Version $version")
+        }
+    }
+
+    @Composable
+    fun AppIcon() {
+        Image(
+            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            contentDescription = null,
+        )
+    }
+
+    @Composable
+    fun NameField() {
+        var nameInput by remember { mutableStateOf(settings!!.database.name) }
+        val focusManager = LocalFocusManager.current
+        OutlinedTextField(
+            value = nameInput,
+            onValueChange = {
+                nameInput = it
+                settings!!.database.name = nameInput
+                saveSettings()
+            },
+            label = { Text("Name") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
+    }
+
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    fun Streamers() {
+        val pagerState = rememberPagerState(pageCount = { relays.count() })
+        StreamerDots(pagerState)
+        HorizontalPager(state = pagerState) { relayIndex -> Streamer(relayIndex) }
+    }
+
+    @OptIn(ExperimentalFoundationApi::class)
+    @Composable
+    fun StreamerDots(pagerState: PagerState) {
+        Row(
+            Modifier.wrapContentHeight().fillMaxWidth().padding(top = 20.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            repeat(relays.count()) { relayIndex ->
+                val color =
+                    if (pagerState.currentPage == relayIndex) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.inversePrimary
+                Box(
+                    modifier =
+                        Modifier.padding(2.dp).clip(CircleShape).background(color).size(10.dp)
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun Streamer(relayIndex: Int) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            val relay = relays[relayIndex]
+            val relaySettings = settings!!.database.relays[relayIndex]
+            val status by relay.uiStatus
+            StreamerUrlField(relaySettings)
+            PasswordField(relaySettings)
+            Text(status)
+            StartStopButton(relay)
+        }
+    }
+
+    @Composable
+    fun StreamerUrlField(relaySettings: RelaySettings) {
+        val focusManager = LocalFocusManager.current
+        var streamerUrlInput by remember { mutableStateOf(relaySettings.streamerUrl) }
+        OutlinedTextField(
+            value = streamerUrlInput,
+            onValueChange = {
+                streamerUrlInput = it
+                relaySettings.streamerUrl = streamerUrlInput
+                saveSettings()
+            },
+            label = { Text("Streamer URL") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
+    }
+
+    @Composable
+    fun PasswordField(relaySettings: RelaySettings) {
+        val focusManager = LocalFocusManager.current
+        var passwordInput by remember { mutableStateOf(relaySettings.password) }
+        OutlinedTextField(
+            modifier = Modifier.padding(bottom = 15.dp),
+            value = passwordInput,
+            onValueChange = {
+                passwordInput = it
+                relaySettings.password = passwordInput
+                saveSettings()
+            },
+            label = { Text("Password") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
+    }
+
+    @Composable
+    fun StartStopButton(relay: Relay) {
+        val text by relay.uiButtonText
+        Button(
+            modifier = Modifier.padding(10.dp),
+            onClick = {
+                if (!relay.uiStarted) {
+                    relay.uiButtonText.value = "Stop"
+                    start(relay)
+                } else {
+                    relay.uiButtonText.value = "Start"
+                    stop(relay)
+                }
+            },
+        ) {
+            Text(text)
         }
     }
 }
