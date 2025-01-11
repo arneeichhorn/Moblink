@@ -6,6 +6,7 @@ import android.net.ConnectivityManager.NetworkCallback
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -48,7 +49,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
+import java.net.InetAddress
 import java.net.InetSocketAddress
+import javax.jmdns.JmDNS
+import javax.jmdns.ServiceInfo
+import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
     private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
@@ -77,6 +82,7 @@ class MainActivity : ComponentActivity() {
             webServer = WebServer(InetSocketAddress(7777))
         } catch (e: Exception) {}
         // webServer?.start()
+        // setupBonjour()
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         val database = settings!!.database
@@ -96,6 +102,33 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {}
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
+    }
+
+    fun setupBonjour() {
+        val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lock = wifiManager.createMulticastLock("Moblink:lock")
+        lock.setReferenceCounted(true)
+        lock.acquire()
+        thread {
+            try {
+                val ipAddress = wifiManager.connectionInfo.ipAddress
+                val intToIp =
+                    InetAddress.getByAddress(
+                        byteArrayOf(
+                            (ipAddress and 0xff).toByte(),
+                            (ipAddress shr 8 and 0xff).toByte(),
+                            (ipAddress shr 16 and 0xff).toByte(),
+                            (ipAddress shr 24 and 0xff).toByte(),
+                        )
+                    )
+                val jmDns = JmDNS.create(intToIp)
+                val serviceInfo = ServiceInfo.create("_moblink._tcp.local", "Moblink", 7777, "")
+                jmDns?.registerService(serviceInfo)
+                // Stop
+                jmDns?.unregisterAllServices()
+                jmDns?.close()
+            } catch (e: Exception) {}
+        }
     }
 
     private fun saveSettings() {
