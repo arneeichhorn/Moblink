@@ -1,37 +1,33 @@
 package com.eerimoq.moblink
 
+import android.R.attr.label
+import android.R.attr.text
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.ConnectivityManager.NetworkCallback
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,13 +38,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
+import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import javax.jmdns.JmDNS
@@ -56,11 +53,18 @@ import javax.jmdns.ServiceInfo
 import kotlin.concurrent.thread
 
 class MainActivity : ComponentActivity() {
-    private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
+    private var relay: Relay? = null
     private var settings: Settings? = null
     private var version = "?"
     private val wakeLock = WakeLock()
-    private var webServer: WebServer? = null
+    private val buttonText = mutableStateOf("Start")
+    private val statusText = mutableStateOf("Not started")
+    private var started = false
+    private var cellularNetworkRequest: NetworkCallback? = null
+    private var wifiNetworkRequest: NetworkCallback? = null
+    private val handlerThread = HandlerThread("Something")
+    private var handler: Handler? = null
+    private val ipAddresses = mutableStateOf(emptyList<InetAddress>())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,100 +74,62 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        for (relay in relays) {
-            stop(relay)
-        }
-        // webServer?.stop()
+        stop()
         super.onDestroy()
     }
 
     private fun setup() {
-        try {
-            webServer = WebServer(InetSocketAddress(7777))
-        } catch (e: Exception) {}
-        // webServer?.start()
-        // setupBonjour()
+        handlerThread.start()
+        handler = Handler(handlerThread.looper)
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
-        val database = settings!!.database
-        for ((relay, relaySettings) in relays.zip(database.relays)) {
-            relay.setup(
-                database.relayId,
-                relaySettings.streamerUrl,
-                relaySettings.password,
-                database.name,
-                { status -> runOnUiThread { relay.uiStatus.value = status } },
-                { callback -> getBatteryPercentage(callback) },
-            )
-        }
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             version = packageInfo.versionName
         } catch (_: Exception) {}
-        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
-        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
-    }
-
-    fun setupBonjour() {
-        val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val lock = wifiManager.createMulticastLock("Moblink:lock")
-        lock.setReferenceCounted(true)
-        lock.acquire()
-        thread {
-            try {
-                val ipAddress = wifiManager.connectionInfo.ipAddress
-                val intToIp =
-                    InetAddress.getByAddress(
-                        byteArrayOf(
-                            (ipAddress and 0xff).toByte(),
-                            (ipAddress shr 8 and 0xff).toByte(),
-                            (ipAddress shr 16 and 0xff).toByte(),
-                            (ipAddress shr 24 and 0xff).toByte(),
-                        )
-                    )
-                val jmDns = JmDNS.create(intToIp)
-                val serviceInfo = ServiceInfo.create("_moblink._tcp.local", "Moblink", 7777, "")
-                jmDns?.registerService(serviceInfo)
-                // Stop
-                jmDns?.unregisterAllServices()
-                jmDns?.close()
-            } catch (e: Exception) {}
-        }
     }
 
     private fun saveSettings() {
         settings!!.store()
         val database = settings!!.database
-        for ((relay, relaySettings) in relays.zip(database.relays)) {
-            relay.updateSettings(
-                database.relayId,
-                relaySettings.streamerUrl,
-                relaySettings.password,
-                database.name,
-            )
-        }
+        relay?.updateSettings(database.relayId, database.name, database.password!!)
     }
 
-    private fun start(relay: Relay) {
-        if (!isStarted()) {
-            startService(this)
-            wakeLock.acquire()
+    private fun start() {
+        if (started) {
+            return
         }
-        relay.uiStarted = true
-        relay.start()
+        started = true
+        startService(this)
+        wakeLock.acquire()
+        val database = settings!!.database
+        relay = Relay(handler!!, InetSocketAddress(database.port!!))
+        relay?.setup(
+            database.relayId,
+            database.name,
+            database.password!!,
+            { status -> runOnUiThread { statusText.value = status } },
+            { callback -> getBatteryPercentage(callback) },
+        )
+        relay?.start()
+        cellularNetworkRequest = createCellularNetworkRequest()
+        wifiNetworkRequest = createWiFiNetworkRequest()
+        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, cellularNetworkRequest!!)
+        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, wifiNetworkRequest!!)
     }
 
-    private fun stop(relay: Relay) {
-        relay.uiStarted = false
-        relay.stop()
-        if (!isStarted()) {
-            stopService(this)
-            wakeLock.release()
+    private fun stop() {
+        if (!started) {
+            return
         }
-    }
-
-    private fun isStarted(): Boolean {
-        return relays.any { it.uiStarted }
+        started = false
+        stopService(this)
+        wakeLock.release()
+        unregisterNetwork(cellularNetworkRequest!!)
+        unregisterNetwork(wifiNetworkRequest!!)
+        relay?.stop()
+        relay = null
+        ipAddresses.value = emptyList()
     }
 
     private fun getBatteryPercentage(callback: (Int) -> Unit) {
@@ -184,20 +150,22 @@ class MainActivity : ComponentActivity() {
         connectivityManager.requestNetwork(networkRequest, networkCallback)
     }
 
+    private fun unregisterNetwork(networkCallback: NetworkCallback) {
+        val connectivityManager =
+            getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager.unregisterNetworkCallback(networkCallback)
+    }
+
     private fun createCellularNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relay in relays) {
-                    relay.setCellularNetwork(network)
-                }
+                relay?.setCellularNetwork(network)
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relay in relays) {
-                    relay.setCellularNetwork(null)
-                }
+                relay?.setCellularNetwork(null)
             }
         }
     }
@@ -206,15 +174,20 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relay in relays) {
-                    relay.setWiFiNetwork(network)
-                }
+                relay?.setWiFiNetwork(network)
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relay in relays) {
-                    relay.setWiFiNetwork(null)
+                relay?.setWiFiNetwork(null)
+                runOnUiThread { ipAddresses.value = emptyList() }
+            }
+
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                super.onLinkPropertiesChanged(network, linkProperties)
+                runOnUiThread {
+                    ipAddresses.value =
+                        linkProperties.linkAddresses.map { address -> address.address }
                 }
             }
         }
@@ -227,11 +200,15 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Moblink relay", fontSize = 30.sp)
+            Text("Moblink relay", modifier = Modifier.padding(top = 50.dp), fontSize = 30.sp)
             AppIcon()
             NameField()
-            Streamers()
-            Text("Version $version")
+            PasswordField()
+            Status()
+            StartStopButton()
+            WebSocketUrls()
+            Text("Version $version", modifier = Modifier.padding(top = 5.dp))
+            Spacer(modifier = Modifier.fillMaxSize())
         }
     }
 
@@ -261,78 +238,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    fun Streamers() {
-        val pagerState = rememberPagerState(pageCount = { relays.count() })
-        StreamerDots(pagerState)
-        HorizontalPager(state = pagerState) { relayIndex -> Streamer(relayIndex) }
-    }
-
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    fun StreamerDots(pagerState: PagerState) {
-        Row(
-            Modifier.wrapContentHeight().fillMaxWidth().padding(top = 20.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            repeat(relays.count()) { relayIndex ->
-                val color =
-                    if (pagerState.currentPage == relayIndex) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.inversePrimary
-                Box(
-                    modifier =
-                        Modifier.padding(2.dp).clip(CircleShape).background(color).size(10.dp)
-                )
-            }
-        }
-    }
-
-    @Composable
-    fun Streamer(relayIndex: Int) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            val relay = relays[relayIndex]
-            val relaySettings = settings!!.database.relays[relayIndex]
-            val status by relay.uiStatus
-            StreamerUrlField(relaySettings)
-            PasswordField(relaySettings)
-            Text(status)
-            StartStopButton(relay)
-        }
-    }
-
-    @Composable
-    fun StreamerUrlField(relaySettings: RelaySettings) {
+    fun PasswordField() {
         val focusManager = LocalFocusManager.current
-        var streamerUrlInput by remember { mutableStateOf(relaySettings.streamerUrl) }
+        var passwordInput by remember { mutableStateOf("1234") }
         OutlinedTextField(
-            value = streamerUrlInput,
-            onValueChange = {
-                streamerUrlInput = it
-                relaySettings.streamerUrl = streamerUrlInput
-                saveSettings()
-            },
-            label = { Text("Streamer URL") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-        )
-    }
-
-    @Composable
-    fun PasswordField(relaySettings: RelaySettings) {
-        val focusManager = LocalFocusManager.current
-        var passwordInput by remember { mutableStateOf(relaySettings.password) }
-        OutlinedTextField(
-            modifier = Modifier.padding(bottom = 15.dp),
+            modifier = Modifier.padding(top = 5.dp, bottom = 10.dp),
             value = passwordInput,
             onValueChange = {
                 passwordInput = it
-                relaySettings.password = passwordInput
                 saveSettings()
             },
             label = { Text("Password") },
@@ -343,21 +257,88 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun StartStopButton(relay: Relay) {
-        val text by relay.uiButtonText
+    fun Status() {
+        val text by statusText
+        Text(text)
+    }
+
+    @Composable
+    fun StartStopButton() {
+        val text by buttonText
         Button(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier.padding(top = 5.dp),
             onClick = {
-                if (!relay.uiStarted) {
-                    relay.uiButtonText.value = "Stop"
-                    start(relay)
+                if (!started) {
+                    start()
+                    buttonText.value = "Stop"
                 } else {
-                    relay.uiButtonText.value = "Start"
-                    stop(relay)
+                    stop()
+                    buttonText.value = "Start"
                 }
             },
         ) {
             Text(text)
+        }
+    }
+
+    @Composable
+    fun WebSocketUrls() {
+        val addresses by ipAddresses
+        if (addresses.isNotEmpty()) {
+            Text(
+                "Copy one Relay URL to Moblin",
+                modifier = Modifier.padding(top = 5.dp, bottom = 5.dp),
+            )
+        }
+        var number = 1
+        for (address in addresses.filterIsInstance<Inet4Address>()) {
+            WebSocketUrl("IPv4", number, address.hostAddress!!)
+            number++
+        }
+        for (address in addresses.filterIsInstance<Inet6Address>()) {
+            WebSocketUrl("IPv6", number, "[${address.hostAddress}]")
+            number++
+        }
+    }
+
+    @Composable
+    fun WebSocketUrl(type: String, number: Int, host: String) {
+        Button(
+            onClick = {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                val clip =
+                    ClipData.newPlainText("Relay URL", "ws://$host:${settings!!.database.port!!}")
+                clipboard.setPrimaryClip(clip)
+            }
+        ) {
+            Text("Relay URL $number ($type)")
+        }
+    }
+
+    fun setupBonjour() {
+        val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val lock = wifiManager.createMulticastLock("Moblink:lock")
+        lock.setReferenceCounted(true)
+        lock.acquire()
+        thread {
+            try {
+                val ipAddress = wifiManager.connectionInfo.ipAddress
+                val intToIp =
+                    InetAddress.getByAddress(
+                        byteArrayOf(
+                            (ipAddress and 0xff).toByte(),
+                            (ipAddress shr 8 and 0xff).toByte(),
+                            (ipAddress shr 16 and 0xff).toByte(),
+                            (ipAddress shr 24 and 0xff).toByte(),
+                        )
+                    )
+                val jmDns = JmDNS.create(intToIp)
+                val serviceInfo = ServiceInfo.create("_moblink._tcp.local", "Moblink", 7777, "")
+                jmDns?.registerService(serviceInfo)
+                // Stop
+                jmDns?.unregisterAllServices()
+                jmDns?.close()
+            } catch (e: Exception) {}
         }
     }
 }

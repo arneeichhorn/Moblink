@@ -4,16 +4,11 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import java.util.UUID
 
-class RelaySettings {
-    var streamerUrl = ""
-    var password = ""
-}
-
 class Database {
     var relayId = UUID.randomUUID().toString()
-    var name = "Relay"
-    var relays =
-        arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
+    var name = randomName()
+    var password: String? = "1234"
+    var port: Int? = 7777
 }
 
 class Settings(private val sharedPreferences: SharedPreferences) {
@@ -28,6 +23,13 @@ class Settings(private val sharedPreferences: SharedPreferences) {
         try {
             database = Gson().fromJson(value, Database::class.java)
         } catch (_: Exception) {}
+        if (database.password == null) {
+            database.password = "1234"
+        }
+        if (database.port == null) {
+            database.port = 7777
+        }
+        store()
     }
 
     fun store() {
@@ -35,4 +37,9 @@ class Settings(private val sharedPreferences: SharedPreferences) {
         editor.putString("database", Gson().toJson(database))
         editor.apply()
     }
+}
+
+private fun randomName(): String {
+    val colors = arrayOf("Black", "Red", "Green", "Yellow", "Blue", "Purple", "Cyan", "White")
+    return colors.random()
 }
