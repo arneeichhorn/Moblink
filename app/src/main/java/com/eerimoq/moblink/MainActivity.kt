@@ -48,15 +48,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
-import java.net.InetAddress
-import java.net.InetSocketAddress
 
 class MainActivity : ComponentActivity() {
     private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
     private var settings: Settings? = null
     private var version = "?"
     private val wakeLock = WakeLock()
-    private var webServer: WebServer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -69,16 +66,10 @@ class MainActivity : ComponentActivity() {
         for (relay in relays) {
             stop(relay)
         }
-        // webServer?.stop()
         super.onDestroy()
     }
 
     private fun setup() {
-        try {
-            webServer = WebServer(InetSocketAddress(7777))
-        } catch (e: Exception) {}
-        // webServer?.start()
-        // setupBonjour()
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
         val database = settings!!.database

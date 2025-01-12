@@ -47,8 +47,6 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.java.websocket)
-    implementation(libs.jmdns)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
