@@ -100,33 +100,6 @@ class MainActivity : ComponentActivity() {
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
     }
 
-    fun setupBonjour() {
-        val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val lock = wifiManager.createMulticastLock("Moblink:lock")
-        lock.setReferenceCounted(true)
-        lock.acquire()
-        thread {
-            try {
-                val ipAddress = wifiManager.connectionInfo.ipAddress
-                val intToIp =
-                    InetAddress.getByAddress(
-                        byteArrayOf(
-                            (ipAddress and 0xff).toByte(),
-                            (ipAddress shr 8 and 0xff).toByte(),
-                            (ipAddress shr 16 and 0xff).toByte(),
-                            (ipAddress shr 24 and 0xff).toByte(),
-                        )
-                    )
-                val jmDns = JmDNS.create(intToIp)
-                val serviceInfo = ServiceInfo.create("_moblink._tcp.local", "Moblink", 7777, "")
-                jmDns?.registerService(serviceInfo)
-                // Stop
-                jmDns?.unregisterAllServices()
-                jmDns?.close()
-            } catch (e: Exception) {}
-        }
-    }
-
     private fun saveSettings() {
         settings!!.store()
         val database = settings!!.database
