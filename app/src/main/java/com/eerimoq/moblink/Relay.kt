@@ -123,21 +123,17 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
     var password = ""
     var name = ""
     private var started = false
-    private var webServerRunning = false
     private var onStatusUpdated: ((String) -> Unit)? = null
     var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
-    private var onError: (() -> Unit)? = null
     private var clients = mutableListOf<Client>()
 
     fun setup(
         relayId: String,
         name: String,
         password: String,
-        onError: () -> Unit,
         onStatusUpdated: (String) -> Unit,
         getBatteryPercentage: ((Int) -> Unit) -> Unit,
     ) {
-        this.onError = onError
         this.onStatusUpdated = onStatusUpdated
         this.getBatteryPercentage = getBatteryPercentage
         handler.post {
@@ -194,6 +190,7 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
             return
         }
         try {
+            super.setReuseAddr(true)
             super.start()
         } catch (e: Exception) {
             Log.i("Moblink", "Web server start failed with error: $e")
@@ -213,8 +210,6 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
         val status =
             if (!started) {
                 "Not started"
-            } else if (!webServerRunning) {
-                "Starting..."
             } else if (cellNetwork == null) {
                 "Waiting for Mobile data"
             } else if (wifiNetwork == null) {
@@ -232,14 +227,12 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
     override fun onStart() {
         handler.post {
             Log.i("Moblink", "Web server started")
-            webServerRunning = true
             updateStatusInternal()
         }
     }
 
     override fun onOpen(webSocket: WebSocket?, handshake: ClientHandshake?) {
         handler.post {
-            Log.i("Moblink", "Open $handshake")
             val client = Client(this, webSocket!!)
             client.start()
             clients.add(client)
@@ -249,7 +242,6 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
 
     override fun onClose(webSocket: WebSocket?, code: Int, reason: String?, remote: Boolean) {
         handler.post {
-            Log.i("Moblink", "Close $reason")
             getClient(webSocket!!)?.also {
                 it.stop()
                 clients.remove(it)
@@ -260,16 +252,13 @@ class Relay(val handler: Handler, address: InetSocketAddress?) : WebSocketServer
 
     override fun onError(webSocket: WebSocket?, ex: java.lang.Exception?) {
         handler.post {
-            Log.i("Moblink", "Web server error: $ex")
             getClient(webSocket)?.also {
                 it.stop()
                 clients.remove(it)
             }
             updateStatusInternal()
             if (webSocket == null) {
-                webServerRunning = false
-                updateStatusInternal()
-                handler.postDelayed({ onError?.let { it() } }, 10000)
+                Log.i("Moblink", "Web server error: $ex")
             }
         }
     }
