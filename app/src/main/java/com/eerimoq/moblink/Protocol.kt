@@ -1,6 +1,6 @@
 package com.eerimoq.moblink
 
-val apiVersion = "1.0"
+const val apiVersion = "1.0"
 
 data class Present(val dummy: Boolean? = null)
 

@@ -1,7 +1,5 @@
 package com.eerimoq.moblink
 
-import android.R.attr.label
-import android.R.attr.text
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -102,12 +100,35 @@ class MainActivity : ComponentActivity() {
         started = true
         startService(this)
         wakeLock.acquire()
+        startRelay()
+    }
+
+    private fun stop() {
+        if (!started) {
+            return
+        }
+        started = false
+        stopService(this)
+        wakeLock.release()
+        stopRelay()
+    }
+
+    private fun startRelay() {
+        if (!started) {
+            return
+        }
         val database = settings!!.database
         relay = Relay(handler!!, InetSocketAddress(database.port!!))
         relay?.setup(
             database.relayId,
             database.name,
             database.password!!,
+            {
+                runOnUiThread {
+                    stopRelay()
+                    startRelay()
+                }
+            },
             { status -> runOnUiThread { statusText.value = status } },
             { callback -> getBatteryPercentage(callback) },
         )
@@ -118,13 +139,7 @@ class MainActivity : ComponentActivity() {
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, wifiNetworkRequest!!)
     }
 
-    private fun stop() {
-        if (!started) {
-            return
-        }
-        started = false
-        stopService(this)
-        wakeLock.release()
+    private fun stopRelay() {
         unregisterNetwork(cellularNetworkRequest!!)
         unregisterNetwork(wifiNetworkRequest!!)
         relay?.stop()
