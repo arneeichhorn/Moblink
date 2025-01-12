@@ -12,8 +12,8 @@ android {
         applicationId = "com.eerimoq.moblink"
         minSdk = 26
         targetSdk = 34
-        versionCode = 20
-        versionName = "0.20.0"
+        versionCode = 22
+        versionName = "0.22.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
