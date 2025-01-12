@@ -12,8 +12,8 @@ android {
         applicationId = "com.eerimoq.moblink"
         minSdk = 26
         targetSdk = 34
-        versionCode = 21
-        versionName = "0.21.0"
+        versionCode = 20
+        versionName = "0.20.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.java.websocket)

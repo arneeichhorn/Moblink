@@ -1,19 +1,12 @@
 package com.eerimoq.moblink
 
-const val apiVersion = "1.0"
-
 data class Present(val dummy: Boolean? = null)
 
 data class Result(val ok: Present?, val wrongPassword: Present?)
 
 data class Authentication(val challenge: String, val salt: String)
 
-data class Hello(
-    val apiVersion: String,
-    val id: String,
-    val name: String,
-    val authentication: Authentication,
-)
+data class Hello(val apiVersion: String, val authentication: Authentication)
 
 data class Identified(val result: Result)
 
@@ -31,12 +24,12 @@ data class ResponseData(val startTunnel: StartTunnelResponseData?, val status: S
 
 data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
 
-data class Identify(val authentication: String)
+data class Identify(val id: String, val name: String, val authentication: String)
 
-data class MessageToClient(
+data class MessageToRelay(
     val hello: Hello?,
     val identified: Identified?,
-    val response: MessageResponse?,
+    val request: MessageRequest?,
 )
 
-data class MessageToServer(val identify: Identify?, val request: MessageRequest?)
+data class MessageToStreamer(val identify: Identify?, val response: MessageResponse?)
