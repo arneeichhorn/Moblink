@@ -6,7 +6,8 @@ functionality is part of [Moblin](https://github.com/eerimoq/moblin) on iOS.
 Make sure to disable energy saving settings in the phone, and allow
 notifications from Moblink(?).
 
-There is probably an APK available here: https://mys-lang.org
+Join Alpha Testing by sending me your e-mail, and I'll add you to the
+list of testers. Once added, click [this invite link](https://play.google.com/apps/testing/com.eerimoq.moblink)!
 
 <p>
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
