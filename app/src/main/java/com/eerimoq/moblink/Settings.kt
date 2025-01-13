@@ -6,12 +6,12 @@ import java.util.UUID
 
 class RelaySettings {
     var streamerUrl = ""
-    var password = ""
+    var password = "1234"
 }
 
 class Database {
     var relayId = UUID.randomUUID().toString()
-    var name = "Relay"
+    var name = randomName()
     var relays =
         arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
 }
@@ -35,4 +35,9 @@ class Settings(private val sharedPreferences: SharedPreferences) {
         editor.putString("database", Gson().toJson(database))
         editor.apply()
     }
+}
+
+private fun randomName(): String {
+    val colors = arrayOf("Black", "Red", "Green", "Yellow", "Blue", "Purple", "Cyan", "White")
+    return colors.random()
 }
