@@ -19,3 +19,5 @@ list of testers. Once added, click [this invite link](https://play.google.com/ap
 Discord: https://discord.gg/nt3UwHqbMM
 
 Github: https://github.com/eerimoq/Moblink
+
+Relay implementation in Rust can be found [here](https://github.com/datagutt/moblink-rust-relay).
