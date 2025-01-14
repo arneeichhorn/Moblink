@@ -6,13 +6,14 @@ import android.os.HandlerThread
 import android.util.Base64
 import android.util.Log
 import androidx.compose.runtime.mutableStateOf
-import com.google.gson.Gson
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -200,7 +201,7 @@ class Relay {
 
     private fun handleMessage(text: String) {
         try {
-            val message = Gson().fromJson(text, MessageToRelay::class.java)
+            val message: MessageToRelay = Json.decodeFromString(text)
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
@@ -273,7 +274,7 @@ class Relay {
     }
 
     private fun send(message: MessageToStreamer) {
-        webSocket?.send(Gson().toJson(message))
+        webSocket?.send(Json.encodeToString(message))
     }
 }
 

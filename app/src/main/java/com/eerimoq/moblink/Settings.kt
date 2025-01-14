@@ -1,14 +1,18 @@
 package com.eerimoq.moblink
 
 import android.content.SharedPreferences
-import com.google.gson.Gson
 import java.util.UUID
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
+@Serializable
 class RelaySettings {
     var streamerUrl = ""
     var password = "1234"
 }
 
+@Serializable
 class Database {
     var relayId = UUID.randomUUID().toString()
     var name = randomName()
@@ -26,13 +30,13 @@ class Settings(private val sharedPreferences: SharedPreferences) {
     private fun load() {
         val value = sharedPreferences.getString("database", "{}") ?: "{}"
         try {
-            database = Gson().fromJson(value, Database::class.java)
+            database = Json.decodeFromString(value)
         } catch (_: Exception) {}
     }
 
     fun store() {
         val editor = sharedPreferences.edit()
-        editor.putString("database", Gson().toJson(database))
+        editor.putString("database", Json.encodeToString(database))
         editor.apply()
     }
 }
