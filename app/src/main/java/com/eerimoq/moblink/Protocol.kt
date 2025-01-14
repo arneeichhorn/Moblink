@@ -8,10 +8,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class Authentication(val challenge: String, val salt: String)
 
-@Serializable data class Hello(val apiVersion: String, val authentication: Authentication)
-
-@Serializable data class Identified(val result: Result)
-
 @Serializable data class StartTunnelRequest(val address: String, val port: Int)
 
 @Serializable
@@ -19,6 +15,10 @@ data class MessageRequestData(
     val startTunnel: StartTunnelRequest? = null,
     val status: Present? = null,
 )
+
+@Serializable data class Hello(val apiVersion: String, val authentication: Authentication)
+
+@Serializable data class Identified(val result: Result)
 
 @Serializable data class MessageRequest(val id: Int, val data: MessageRequestData)
 
@@ -32,9 +32,9 @@ data class ResponseData(
     val status: StatusResponseData? = null,
 )
 
-@Serializable data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
-
 @Serializable data class Identify(val id: String, val name: String, val authentication: String)
+
+@Serializable data class MessageResponse(val id: Int, val result: Result, val data: ResponseData)
 
 @Serializable
 data class MessageToRelay(
