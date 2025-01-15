@@ -231,7 +231,7 @@ class Relay {
         updateStatusInternal()
     }
 
-    private fun handleMessageRequest(request: MessageRequest) {
+    private fun handleMessageRequest(request: com.eerimoq.moblink.Request) {
         if (request.data.startTunnel != null) {
             handleMessageStartTunnelRequest(request.id, request.data.startTunnel)
         } else if (request.data.status != null) {
@@ -256,8 +256,8 @@ class Relay {
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
         )
-        val data = ResponseData(StartTunnelResponseData(streamerSocket!!.localPort), null)
-        val response = MessageResponse(id, Result(Present(), null), data)
+        val data = ResponseData(StartTunnelResponse(streamerSocket!!.localPort), null)
+        val response = Response(id, Result(Present(), null), data)
         send(MessageToStreamer(null, response))
     }
 
@@ -265,8 +265,8 @@ class Relay {
         getBatteryPercentage?.let {
             it { batteryPercentage ->
                 handler?.post {
-                    val data = ResponseData(null, StatusResponseData(batteryPercentage))
-                    val response = MessageResponse(id, Result(Present(), null), data)
+                    val data = ResponseData(null, StatusResponse(batteryPercentage))
+                    val response = Response(id, Result(Present(), null), data)
                     send(MessageToStreamer(null, response))
                 }
             }
@@ -285,20 +285,20 @@ private fun startStreamerReceiver(
     destinationPort: Int,
 ) {
     thread {
-        var destinationReceiverCreated = false
+        var destinationReceiverStarted = false
         val buffer = ByteArray(2048)
         val packet = DatagramPacket(buffer, buffer.size)
         try {
             while (true) {
                 streamerSocket.receive(packet)
-                if (!destinationReceiverCreated) {
+                if (!destinationReceiverStarted) {
                     startDestinationReceiver(
                         streamerSocket,
                         destinationSocket,
                         packet.address,
                         packet.port,
                     )
-                    destinationReceiverCreated = true
+                    destinationReceiverStarted = true
                 }
                 packet.address = destinationAddress
                 packet.port = destinationPort
