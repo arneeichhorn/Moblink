@@ -12,8 +12,6 @@ import java.net.InetAddress
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -201,7 +199,7 @@ class Relay {
 
     private fun handleMessage(text: String) {
         try {
-            val message: MessageToRelay = Json.decodeFromString(text)
+            val message = MessageToRelay.fromJson(text)
             if (message.hello != null) {
                 handleMessageHello(message.hello)
             } else if (message.identified != null) {
@@ -274,7 +272,7 @@ class Relay {
     }
 
     private fun send(message: MessageToStreamer) {
-        webSocket?.send(Json.encodeToString(message))
+        webSocket?.send(message.toJson())
     }
 }
 

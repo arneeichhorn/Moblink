@@ -18,6 +18,16 @@ class Database {
     var name = randomName()
     var relays =
         arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
+
+    fun toJson(): String {
+        return Json.encodeToString(this)
+    }
+
+    companion object {
+        fun fromJson(text: String): Database {
+            return Json.decodeFromString(text)
+        }
+    }
 }
 
 class Settings(private val sharedPreferences: SharedPreferences) {
@@ -30,13 +40,13 @@ class Settings(private val sharedPreferences: SharedPreferences) {
     private fun load() {
         val value = sharedPreferences.getString("database", "{}") ?: "{}"
         try {
-            database = Json.decodeFromString(value)
+            database = Database.fromJson(value)
         } catch (_: Exception) {}
     }
 
     fun store() {
         val editor = sharedPreferences.edit()
-        editor.putString("database", Json.encodeToString(database))
+        editor.putString("database", database.toJson())
         editor.apply()
     }
 }

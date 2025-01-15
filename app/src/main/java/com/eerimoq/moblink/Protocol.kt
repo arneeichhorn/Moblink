@@ -1,6 +1,8 @@
 package com.eerimoq.moblink
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @Serializable data class Present(val dummy: Boolean? = null)
 
@@ -38,7 +40,17 @@ data class MessageToRelay(
     val hello: Hello? = null,
     val identified: Identified? = null,
     val request: Request? = null,
-)
+) {
+    companion object {
+        fun fromJson(text: String): MessageToRelay {
+            return Json.decodeFromString(text)
+        }
+    }
+}
 
 @Serializable
-data class MessageToStreamer(val identify: Identify? = null, val response: Response? = null)
+data class MessageToStreamer(val identify: Identify? = null, val response: Response? = null) {
+    fun toJson(): String {
+        return Json.encodeToString(this)
+    }
+}
