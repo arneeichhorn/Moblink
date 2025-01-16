@@ -163,21 +163,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun createWiFiNetworkRequest(): NetworkCallback {
-        return object : NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                super.onAvailable(network)
-                for (relay in relays) {
-                    relay.setWiFiNetwork(network)
-                }
-            }
-
-            override fun onLost(network: Network) {
-                super.onLost(network)
-                for (relay in relays) {
-                    relay.setWiFiNetwork(null)
-                }
-            }
-        }
+        return object : NetworkCallback() {}
     }
 
     @Composable

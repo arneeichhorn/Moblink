@@ -22,7 +22,6 @@ import okio.ByteString.Companion.encodeUtf8
 class Relay {
     private val okHttpClient = OkHttpClient.Builder().pingInterval(5, TimeUnit.SECONDS).build()
     private var webSocket: WebSocket? = null
-    private var wiFiNetwork: Network? = null
     private var cellularNetwork: Network? = null
     private var streamerSocket: DatagramSocket? = null
     private var destinationSocket: DatagramSocket? = null
@@ -97,13 +96,6 @@ class Relay {
         }
     }
 
-    fun setWiFiNetwork(network: Network?) {
-        handler?.post {
-            wiFiNetwork = network
-            updateStatusInternal()
-        }
-    }
-
     private fun startInternal() {
         stopInternal()
         if (!started) {
@@ -174,8 +166,6 @@ class Relay {
                 "Password empty"
             } else if (cellularNetwork == null) {
                 "Waiting for cellular"
-            } else if (wiFiNetwork == null) {
-                "Waiting for WiFi"
             } else if (connected) {
                 "Connected to streamer"
             } else if (wrongPassword) {
@@ -240,12 +230,11 @@ class Relay {
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
         streamerSocket?.close()
         destinationSocket?.close()
-        if (wiFiNetwork == null || cellularNetwork == null) {
+        if (cellularNetwork == null) {
             reconnectSoon()
             return
         }
         streamerSocket = DatagramSocket()
-        wiFiNetwork?.bindSocket(streamerSocket)
         destinationSocket = DatagramSocket()
         cellularNetwork?.bindSocket(destinationSocket)
         startStreamerReceiver(
