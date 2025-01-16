@@ -4,7 +4,6 @@ import android.net.Network
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
-import android.util.Log
 import androidx.compose.runtime.mutableStateOf
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -105,7 +104,7 @@ class Relay {
             try {
                 Request.Builder().url(streamerUrl).build()
             } catch (e: Exception) {
-                Log.i("Moblink", "Failed to build URL: $e")
+                log("Failed to build URL: $e")
                 return
             }
         webSocket =
@@ -125,7 +124,7 @@ class Relay {
                         super.onClosed(webSocket, code, reason)
                         handler?.post {
                             if (webSocket === getWebsocket()) {
-                                Log.i("Moblink", "Websocket closed $reason (code $code)")
+                                log("Websocket closed $reason (code $code)")
                                 reconnectSoon()
                             }
                         }
@@ -139,7 +138,7 @@ class Relay {
                         super.onFailure(webSocket, t, response)
                         handler?.post {
                             if (webSocket === getWebsocket()) {
-                                Log.i("Moblink", "Websocket failure $t")
+                                log("Websocket failure $t")
                                 reconnectSoon()
                             }
                         }
@@ -198,7 +197,7 @@ class Relay {
                 handleMessageRequest(message.request)
             }
         } catch (e: Exception) {
-            Log.i("Moblink", "Message handling failed: $e")
+            log("Message handling failed: $e")
             reconnectSoon()
         }
     }
