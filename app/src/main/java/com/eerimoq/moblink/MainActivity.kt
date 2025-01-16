@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {}
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
+        requestNetwork(NetworkCapabilities.TRANSPORT_ETHERNET, createEthernetNetworkRequest())
     }
 
     private fun saveSettings() {
@@ -163,6 +164,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun createWiFiNetworkRequest(): NetworkCallback {
+        return object : NetworkCallback() {}
+    }
+
+    private fun createEthernetNetworkRequest(): NetworkCallback {
         return object : NetworkCallback() {}
     }
 
