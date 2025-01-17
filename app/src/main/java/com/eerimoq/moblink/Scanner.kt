@@ -5,9 +5,7 @@ import android.net.nsd.NsdServiceInfo
 
 const val serviceType = "_moblink._tcp"
 
-class Scanner(
-    private val nsdManager: NsdManager,
-) {
+class Scanner(private val nsdManager: NsdManager) {
     fun setup() {
         nsdManager.discoverServices(
             serviceType,

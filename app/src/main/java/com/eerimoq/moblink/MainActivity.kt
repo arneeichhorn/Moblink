@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -34,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,6 +59,8 @@ class MainActivity : ComponentActivity() {
     private var version = "?"
     private val wakeLock = WakeLock()
     private var scanner: Scanner? = null
+    private var automaticStarted = false
+    private var automaticButtonText = mutableStateOf("Start")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,8 +97,7 @@ class MainActivity : ComponentActivity() {
         requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
         requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
         requestNetwork(NetworkCapabilities.TRANSPORT_ETHERNET, createEthernetNetworkRequest())
-        scanner =
-            Scanner(getSystemService(Context.NSD_SERVICE) as NsdManager)
+        scanner = Scanner(getSystemService(Context.NSD_SERVICE) as NsdManager)
         scanner?.setup()
     }
 
@@ -178,16 +182,38 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Main() {
+        var manual by remember { mutableStateOf(settings!!.database.manual!!) }
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Moblink relay", fontSize = 30.sp)
+            Text("Moblink relay", modifier = Modifier.padding(top = 70.dp), fontSize = 30.sp)
             AppIcon()
             NameField()
-            Streamers()
+            Row(
+                modifier = Modifier.padding(top = 5.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Manual")
+                Spacer(modifier = Modifier.padding(horizontal = 50.dp))
+                Switch(
+                    checked = manual,
+                    onCheckedChange = {
+                        manual = it
+                        settings!!.database.manual = manual
+                        saveSettings()
+                    },
+                )
+            }
+            if (manual) {
+                Streamers()
+            } else {
+                Automatic()
+            }
             Text("Version $version")
+            Spacer(modifier = Modifier.fillMaxHeight())
         }
     }
 
@@ -217,6 +243,32 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    @Composable
+    fun Automatic() {
+        PasswordField(settings!!.database.automatic!!)
+        Text("Connected to 2 streamers")
+        AutomaticStartStopButton()
+    }
+
+    @Composable
+    fun AutomaticStartStopButton() {
+        val text by automaticButtonText
+        Button(
+            modifier = Modifier.padding(10.dp),
+            onClick = {
+                if (!automaticStarted) {
+                    automaticButtonText.value = "Stop"
+                    automaticStarted = true
+                } else {
+                    automaticButtonText.value = "Start"
+                    automaticStarted = false
+                }
+            },
+        ) {
+            Text(text)
+        }
+    }
+
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     fun Streamers() {
@@ -229,7 +281,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun StreamerDots(pagerState: PagerState) {
         Row(
-            Modifier.wrapContentHeight().fillMaxWidth().padding(top = 20.dp),
+            Modifier.wrapContentHeight().fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
             repeat(relays.count()) { relayIndex ->

@@ -16,6 +16,8 @@ class RelaySettings {
 class Database {
     var relayId = UUID.randomUUID().toString()
     var name = randomName()
+    var manual: Boolean? = false
+    var automatic: RelaySettings? = RelaySettings()
     var relays =
         arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
 
@@ -42,6 +44,14 @@ class Settings(private val sharedPreferences: SharedPreferences) {
         try {
             database = Database.fromJson(value)
         } catch (_: Exception) {}
+        if (database.manual == null) {
+            database.manual = false
+            store()
+        }
+        if (database.automatic == null) {
+            database.automatic = RelaySettings()
+            store()
+        }
     }
 
     fun store() {
