@@ -2,6 +2,7 @@ package com.eerimoq.moblink
 
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import java.net.Inet4Address
 
 const val serviceType = "_moblink._tcp"
 
@@ -52,8 +53,14 @@ class Scanner(private val nsdManager: NsdManager, private val onFound: (String) 
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
 
             override fun onServiceResolved(service: NsdServiceInfo) {
-                val url = "ws:/${service.host}:${service.port}"
-                log("Resolved service ${service.serviceName}: ${service.host}:${service.port}")
+                val address =
+                    if (service.host is Inet4Address) {
+                        service.host.hostAddress
+                    } else {
+                        "[${service.host.hostAddress}]"
+                    }
+                val url = "ws://${address}:${service.port}"
+                log("Resolved service ${service.serviceName}: $url")
                 onFound(url)
             }
         }
