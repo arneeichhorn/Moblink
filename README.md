@@ -9,6 +9,8 @@ notifications from Moblink(?).
 Join Alpha Testing by sending me your e-mail, and I'll add you to the
 list of testers. Once added, click [this invite link](https://play.google.com/apps/testing/com.eerimoq.moblink)!
 
+APK can be found here: https://mys-lang.org
+
 <p>
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
     <img src="https://github.com/eerimoq/Moblink/raw/main/docs/screenshot-dark.jpg" width="25%" >
