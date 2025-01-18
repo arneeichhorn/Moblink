@@ -54,13 +54,15 @@ import androidx.compose.ui.unit.sp
 import com.eerimoq.moblink.ui.theme.MoblinkTheme
 
 class MainActivity : ComponentActivity() {
-    private val relays = arrayOf(Relay(), Relay(), Relay(), Relay(), Relay())
+    private val relays: MutableList<Relay> = mutableListOf()
     private var settings: Settings? = null
     private var version = "?"
     private val wakeLock = WakeLock()
     private var scanner: Scanner? = null
     private var automaticStarted = false
     private var automaticButtonText = mutableStateOf("Start")
+    private var automaticStatus = mutableStateOf("Not started")
+    private var cellularNetwork: Network? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,17 +72,101 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        for (relay in relays) {
-            stop(relay)
-        }
+        stopAutomatic()
+        teardownManual()
         super.onDestroy()
     }
 
     private fun setup() {
         wakeLock.setup(this)
         settings = Settings(getSharedPreferences("settings", Context.MODE_PRIVATE))
+        modeChanged()
+        try {
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            version = packageInfo.versionName
+        } catch (_: Exception) {}
+        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
+        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
+        requestNetwork(NetworkCapabilities.TRANSPORT_ETHERNET, createEthernetNetworkRequest())
+    }
+
+    private fun modeChanged() {
+        stopAutomatic()
+        teardownManual()
+        if (settings!!.database.manual!!) {
+            setupManual()
+        }
+    }
+
+    private fun startAutomatic() {
+        if (automaticStarted) {
+            return
+        }
+        automaticStarted = true
+        automaticButtonText.value = "Stop"
+        automaticStatus.value = "Searching for streamers"
+        startService(this)
+        wakeLock.acquire()
+        scanner =
+            Scanner(getSystemService(Context.NSD_SERVICE) as NsdManager) { streamerUrl ->
+                runOnUiThread { handleStreamerFound(streamerUrl) }
+            }
+        scanner?.start()
+    }
+
+    private fun handleStreamerFound(streamerUrl: String) {
+        if (relays.count { relay -> relay.uiStreamerUrl == streamerUrl } != 0) {
+            return
+        }
+        log("Automatic setup of relay for URL $streamerUrl")
         val database = settings!!.database
-        for ((relay, relaySettings) in relays.zip(database.relays)) {
+        val relay = Relay()
+        relay.setup(
+            database.relayId,
+            streamerUrl,
+            database.automaticPassword!!,
+            database.name,
+            { status ->
+                runOnUiThread {
+                    if (!automaticStarted) {
+                        return@runOnUiThread
+                    }
+                    log("Status $status (URL: $streamerUrl)")
+                    relay.uiStatus.value = status
+                    val connectedCount =
+                        relays.count { relay -> relay.uiStatus.value == "Connected to streamer" }
+                    val totalCount = relays.count()
+                    automaticStatus.value = "Connected to $connectedCount of $totalCount streamers"
+                }
+            },
+            { callback -> getBatteryPercentage(callback) },
+        )
+        relay.start()
+        relay.setCellularNetwork(cellularNetwork)
+        relays.add(relay)
+    }
+
+    private fun stopAutomatic() {
+        if (!automaticStarted) {
+            return
+        }
+        automaticStarted = false
+        automaticButtonText.value = "Start"
+        automaticStatus.value = "Not started"
+        stopService(this)
+        wakeLock.release()
+        scanner?.stop()
+        scanner = null
+        for (relay in relays) {
+            relay.stop()
+        }
+        relays.clear()
+    }
+
+    private fun setupManual() {
+        val database = settings!!.database
+        for (relaySettings in database.relays) {
+            val relay = Relay()
             relay.setup(
                 database.relayId,
                 relaySettings.streamerUrl,
@@ -89,16 +175,42 @@ class MainActivity : ComponentActivity() {
                 { status -> runOnUiThread { relay.uiStatus.value = status } },
                 { callback -> getBatteryPercentage(callback) },
             )
+            relay.setCellularNetwork(cellularNetwork)
+            relays.add(relay)
         }
-        try {
-            val packageInfo = packageManager.getPackageInfo(packageName, 0)
-            version = packageInfo.versionName
-        } catch (_: Exception) {}
-        requestNetwork(NetworkCapabilities.TRANSPORT_CELLULAR, createCellularNetworkRequest())
-        requestNetwork(NetworkCapabilities.TRANSPORT_WIFI, createWiFiNetworkRequest())
-        requestNetwork(NetworkCapabilities.TRANSPORT_ETHERNET, createEthernetNetworkRequest())
-        scanner = Scanner(getSystemService(Context.NSD_SERVICE) as NsdManager)
-        scanner?.setup()
+    }
+
+    private fun teardownManual() {
+        for (relay in relays) {
+            relay.stop()
+        }
+        relays.clear()
+    }
+
+    private fun startRelayManual(relay: Relay) {
+        if (!isStartedManual()) {
+            startService(this)
+            wakeLock.acquire()
+        }
+        relay.start()
+    }
+
+    private fun stopRelayManual(relay: Relay) {
+        relay.stop()
+        if (!isStartedManual()) {
+            stopService(this)
+            wakeLock.release()
+        }
+    }
+
+    private fun isStartedManual(): Boolean {
+        return relays.any { it.uiStarted }
+    }
+
+    private fun cellularNetworkUpdated() {
+        for (relay in relays) {
+            relay.setCellularNetwork(cellularNetwork)
+        }
     }
 
     private fun saveSettings() {
@@ -112,28 +224,6 @@ class MainActivity : ComponentActivity() {
                 database.name,
             )
         }
-    }
-
-    private fun start(relay: Relay) {
-        if (!isStarted()) {
-            startService(this)
-            wakeLock.acquire()
-        }
-        relay.uiStarted = true
-        relay.start()
-    }
-
-    private fun stop(relay: Relay) {
-        relay.uiStarted = false
-        relay.stop()
-        if (!isStarted()) {
-            stopService(this)
-            wakeLock.release()
-        }
-    }
-
-    private fun isStarted(): Boolean {
-        return relays.any { it.uiStarted }
     }
 
     private fun getBatteryPercentage(callback: (Int) -> Unit) {
@@ -158,15 +248,17 @@ class MainActivity : ComponentActivity() {
         return object : NetworkCallback() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
-                for (relay in relays) {
-                    relay.setCellularNetwork(network)
+                runOnUiThread {
+                    cellularNetwork = network
+                    cellularNetworkUpdated()
                 }
             }
 
             override fun onLost(network: Network) {
                 super.onLost(network)
-                for (relay in relays) {
-                    relay.setCellularNetwork(null)
+                runOnUiThread {
+                    cellularNetwork = null
+                    cellularNetworkUpdated()
                 }
             }
         }
@@ -204,6 +296,7 @@ class MainActivity : ComponentActivity() {
                         manual = it
                         settings!!.database.manual = manual
                         saveSettings()
+                        modeChanged()
                     },
                 )
             }
@@ -245,9 +338,29 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun Automatic() {
-        PasswordField(settings!!.database.automatic!!)
-        Text("Connected to 2 streamers")
+        val status by automaticStatus
+        AutomaticPasswordField()
+        Text(status)
         AutomaticStartStopButton()
+    }
+
+    @Composable
+    fun AutomaticPasswordField() {
+        val focusManager = LocalFocusManager.current
+        var passwordInput by remember { mutableStateOf(settings!!.database.automaticPassword!!) }
+        OutlinedTextField(
+            modifier = Modifier.padding(bottom = 15.dp),
+            value = passwordInput,
+            onValueChange = {
+                passwordInput = it
+                settings!!.database.automaticPassword = passwordInput
+                saveSettings()
+            },
+            label = { Text("Password") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        )
     }
 
     @Composable
@@ -257,11 +370,9 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.padding(10.dp),
             onClick = {
                 if (!automaticStarted) {
-                    automaticButtonText.value = "Stop"
-                    automaticStarted = true
+                    startAutomatic()
                 } else {
-                    automaticButtonText.value = "Start"
-                    automaticStarted = false
+                    stopAutomatic()
                 }
             },
         ) {
@@ -357,11 +468,9 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.padding(10.dp),
             onClick = {
                 if (!relay.uiStarted) {
-                    relay.uiButtonText.value = "Stop"
-                    start(relay)
+                    startRelayManual(relay)
                 } else {
-                    relay.uiButtonText.value = "Start"
-                    stop(relay)
+                    stopRelayManual(relay)
                 }
             },
         ) {

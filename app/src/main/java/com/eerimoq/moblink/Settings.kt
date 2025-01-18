@@ -17,7 +17,7 @@ class Database {
     var relayId = UUID.randomUUID().toString()
     var name = randomName()
     var manual: Boolean? = false
-    var automatic: RelaySettings? = RelaySettings()
+    var automaticPassword: String? = "1234"
     var relays =
         arrayOf(RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings(), RelaySettings())
 
@@ -48,8 +48,8 @@ class Settings(private val sharedPreferences: SharedPreferences) {
             database.manual = false
             store()
         }
-        if (database.automatic == null) {
-            database.automatic = RelaySettings()
+        if (database.automaticPassword == null) {
+            database.automaticPassword = "1234"
             store()
         }
     }

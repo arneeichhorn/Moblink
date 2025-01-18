@@ -5,16 +5,24 @@ import android.net.nsd.NsdServiceInfo
 
 const val serviceType = "_moblink._tcp"
 
-class Scanner(private val nsdManager: NsdManager) {
-    fun setup() {
-        nsdManager.discoverServices(
-            serviceType,
-            NsdManager.PROTOCOL_DNS_SD,
-            createNsgListenerCallback(),
-        )
+class Scanner(private val nsdManager: NsdManager, private val onFound: (String) -> Unit) {
+    private var listener: NsdManager.DiscoveryListener? = null
+
+    fun start() {
+        log("Scanner start")
+        listener = createNsdListenerCallback()
+        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 
-    private fun createNsgListenerCallback(): NsdManager.DiscoveryListener {
+    fun stop() {
+        log("Scanner stop")
+        if (listener != null) {
+            nsdManager.stopServiceDiscovery(listener)
+            listener = null
+        }
+    }
+
+    private fun createNsdListenerCallback(): NsdManager.DiscoveryListener {
         return object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {}
 
@@ -44,7 +52,9 @@ class Scanner(private val nsdManager: NsdManager) {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
 
             override fun onServiceResolved(service: NsdServiceInfo) {
+                val url = "ws:/${service.host}:${service.port}"
                 log("Resolved service ${service.serviceName}: ${service.host}:${service.port}")
+                onFound(url)
             }
         }
     }
