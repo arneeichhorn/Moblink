@@ -104,7 +104,6 @@ class MainActivity : ComponentActivity() {
         }
         automaticStarted = true
         automaticButtonText.value = "Stop"
-        automaticStatus.value = "Searching for streamers"
         startService(this)
         wakeLock.acquire()
         scanner =
@@ -112,6 +111,24 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread { handleStreamerFound(streamerUrl) }
             }
         scanner?.start()
+        updateAutomaticStatus()
+    }
+
+    private fun stopAutomatic() {
+        if (!automaticStarted) {
+            return
+        }
+        automaticStarted = false
+        automaticButtonText.value = "Start"
+        stopService(this)
+        wakeLock.release()
+        scanner?.stop()
+        scanner = null
+        for (relay in relays) {
+            relay.stop()
+        }
+        relays.clear()
+        updateAutomaticStatus()
     }
 
     private fun handleStreamerFound(streamerUrl: String) {
@@ -133,10 +150,7 @@ class MainActivity : ComponentActivity() {
                     }
                     log("Status $status (URL: $streamerUrl)")
                     relay.uiStatus.value = status
-                    val connectedCount =
-                        relays.count { relay -> relay.uiStatus.value == "Connected to streamer" }
-                    val totalCount = relays.count()
-                    automaticStatus.value = "Connected to $connectedCount of $totalCount streamers"
+                    updateAutomaticStatus()
                 }
             },
             { callback -> getBatteryPercentage(callback) },
@@ -146,21 +160,20 @@ class MainActivity : ComponentActivity() {
         relays.add(relay)
     }
 
-    private fun stopAutomatic() {
-        if (!automaticStarted) {
-            return
-        }
-        automaticStarted = false
-        automaticButtonText.value = "Start"
-        automaticStatus.value = "Not started"
-        stopService(this)
-        wakeLock.release()
-        scanner?.stop()
-        scanner = null
-        for (relay in relays) {
-            relay.stop()
-        }
-        relays.clear()
+    private fun updateAutomaticStatus() {
+        val connectedCount =
+            relays.count { relay -> relay.uiStatus.value == "Connected to streamer" }
+        val totalCount = relays.count()
+        automaticStatus.value =
+            if (!automaticStarted) {
+                "Not started"
+            } else if (cellularNetwork == null) {
+                "Waiting for cellular"
+            } else if (totalCount > 0) {
+                "Connected to $connectedCount of $totalCount streamers"
+            } else {
+                "Searching for streamers"
+            }
     }
 
     private fun setupManual() {
@@ -251,6 +264,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     cellularNetwork = network
                     cellularNetworkUpdated()
+                    updateAutomaticStatus()
                 }
             }
 
@@ -259,6 +273,7 @@ class MainActivity : ComponentActivity() {
                 runOnUiThread {
                     cellularNetwork = null
                     cellularNetworkUpdated()
+                    updateAutomaticStatus()
                 }
             }
         }
