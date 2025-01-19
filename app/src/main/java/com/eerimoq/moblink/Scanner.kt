@@ -6,8 +6,15 @@ import java.net.Inet4Address
 
 const val serviceType = "_moblink._tcp"
 
-class Scanner(private val nsdManager: NsdManager, private val onFound: (String) -> Unit) {
+private class Resolve(var cancelled: Boolean = false)
+
+class Scanner(
+    private val nsdManager: NsdManager,
+    private val onFound: (String, String) -> Unit,
+    private val onLost: (String) -> Unit,
+) {
     private var listener: NsdManager.DiscoveryListener? = null
+    private var pendingResolves: MutableMap<String, Resolve> = mutableMapOf()
 
     fun start() {
         log("Scanner start")
@@ -29,11 +36,15 @@ class Scanner(private val nsdManager: NsdManager, private val onFound: (String) 
 
             override fun onServiceFound(service: NsdServiceInfo) {
                 log("Service found: ${service.serviceName}")
-                nsdManager.resolveService(service, createResolveCallback())
+                val resolve = Resolve()
+                nsdManager.resolveService(service, createResolveCallback(resolve))
+                pendingResolves.replace(service.serviceName, resolve)?.cancelled = true
             }
 
             override fun onServiceLost(service: NsdServiceInfo) {
                 log("Service lost ${service.serviceName}")
+                pendingResolves.remove(service.serviceName)?.cancelled = true
+                onLost(service.serviceName)
             }
 
             override fun onDiscoveryStopped(serviceType: String) {}
@@ -48,11 +59,15 @@ class Scanner(private val nsdManager: NsdManager, private val onFound: (String) 
         }
     }
 
-    private fun createResolveCallback(): NsdManager.ResolveListener {
+    private fun createResolveCallback(resolve: Resolve): NsdManager.ResolveListener {
         return object : NsdManager.ResolveListener {
-            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+            override fun onResolveFailed(service: NsdServiceInfo, errorCode: Int) {}
 
             override fun onServiceResolved(service: NsdServiceInfo) {
+                if (resolve.cancelled) {
+                    log("Service resolve cancelled ${service.serviceName}")
+                    return
+                }
                 val address =
                     if (service.host is Inet4Address) {
                         service.host.hostAddress
@@ -60,8 +75,7 @@ class Scanner(private val nsdManager: NsdManager, private val onFound: (String) 
                         "[${service.host.hostAddress}]"
                     }
                 val url = "ws://${address}:${service.port}"
-                log("Resolved service ${service.serviceName}: $url")
-                onFound(url)
+                onFound(service.serviceName, url)
             }
         }
     }

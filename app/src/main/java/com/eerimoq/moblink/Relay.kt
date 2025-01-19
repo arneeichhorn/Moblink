@@ -35,10 +35,10 @@ class Relay {
     private var wrongPassword = false
     private var onStatusUpdated: ((String) -> Unit)? = null
     private var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
-    var uiStreamerUrl = ""
     val uiButtonText = mutableStateOf("Start")
     val uiStatus = mutableStateOf("")
     var uiStarted = false
+    var uiStreamerName = ""
 
     fun setup(
         relayId: String,
@@ -48,8 +48,6 @@ class Relay {
         onStatusUpdated: (String) -> Unit,
         getBatteryPercentage: ((Int) -> Unit) -> Unit,
     ) {
-        log("Setup relay with streamer URL $streamerUrl")
-        uiStreamerUrl = streamerUrl
         this.onStatusUpdated = onStatusUpdated
         this.getBatteryPercentage = getBatteryPercentage
         handlerThread.start()

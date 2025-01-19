@@ -107,9 +107,13 @@ class MainActivity : ComponentActivity() {
         startService(this)
         wakeLock.acquire()
         scanner =
-            Scanner(getSystemService(Context.NSD_SERVICE) as NsdManager) { streamerUrl ->
-                runOnUiThread { handleStreamerFound(streamerUrl) }
-            }
+            Scanner(
+                getSystemService(Context.NSD_SERVICE) as NsdManager,
+                { streamerName, streamerUrl ->
+                    runOnUiThread { handleStreamerFound(streamerName, streamerUrl) }
+                },
+                { streamerName -> runOnUiThread { handleStreamerLost(streamerName) } },
+            )
         scanner?.start()
         updateAutomaticStatus()
     }
@@ -131,11 +135,8 @@ class MainActivity : ComponentActivity() {
         updateAutomaticStatus()
     }
 
-    private fun handleStreamerFound(streamerUrl: String) {
-        if (relays.count { relay -> relay.uiStreamerUrl == streamerUrl } != 0) {
-            return
-        }
-        log("Automatic setup of relay for URL $streamerUrl")
+    private fun handleStreamerFound(streamerName: String, streamerUrl: String) {
+        log("Found streamer $streamerName with URL $streamerUrl")
         val database = settings!!.database
         val relay = Relay()
         relay.setup(
@@ -148,16 +149,29 @@ class MainActivity : ComponentActivity() {
                     if (!automaticStarted) {
                         return@runOnUiThread
                     }
-                    log("Status $status (URL: $streamerUrl)")
                     relay.uiStatus.value = status
                     updateAutomaticStatus()
                 }
             },
-            { callback -> getBatteryPercentage(callback) },
+            { callback -> runOnUiThread { getBatteryPercentage(callback) } },
         )
+        relay.uiStreamerName = streamerName
         relay.start()
         relay.setCellularNetwork(cellularNetwork)
         relays.add(relay)
+        updateAutomaticStatus()
+    }
+
+    private fun handleStreamerLost(streamerName: String) {
+        log("Lost streamer $streamerName")
+        for (relay in relays) {
+            if (relay.uiStreamerName != streamerName) {
+                continue
+            }
+            relay.stop()
+        }
+        relays.removeAll { relay -> relay.uiStreamerName == streamerName }
+        updateAutomaticStatus()
     }
 
     private fun updateAutomaticStatus() {
@@ -186,7 +200,7 @@ class MainActivity : ComponentActivity() {
                 relaySettings.password,
                 database.name,
                 { status -> runOnUiThread { relay.uiStatus.value = status } },
-                { callback -> getBatteryPercentage(callback) },
+                { callback -> runOnUiThread { getBatteryPercentage(callback) } },
             )
             relay.setCellularNetwork(cellularNetwork)
             relays.add(relay)
@@ -240,10 +254,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getBatteryPercentage(callback: (Int) -> Unit) {
-        runOnUiThread {
-            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            callback(batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
-        }
+        val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        callback(batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
     }
 
     private fun requestNetwork(transportType: Int, networkCallback: NetworkCallback) {
