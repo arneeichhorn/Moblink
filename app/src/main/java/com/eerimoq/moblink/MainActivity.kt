@@ -137,6 +137,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleStreamerFound(streamerName: String, streamerUrl: String) {
         log("Found streamer $streamerName with URL $streamerUrl")
+        for (relay in relays) {
+            if (relay.uiStreamerName == streamerName) {
+                return
+            }
+        }
         val database = settings!!.database
         val relay = Relay()
         relay.setup(
@@ -164,14 +169,6 @@ class MainActivity : ComponentActivity() {
 
     private fun handleStreamerLost(streamerName: String) {
         log("Lost streamer $streamerName")
-        for (relay in relays) {
-            if (relay.uiStreamerName != streamerName) {
-                continue
-            }
-            relay.stop()
-        }
-        relays.removeAll { relay -> relay.uiStreamerName == streamerName }
-        updateAutomaticStatus()
     }
 
     private fun updateAutomaticStatus() {
