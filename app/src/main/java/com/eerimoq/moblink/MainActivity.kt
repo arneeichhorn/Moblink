@@ -137,10 +137,13 @@ class MainActivity : ComponentActivity() {
 
     private fun handleStreamerFound(streamerName: String, streamerUrl: String) {
         log("Found streamer $streamerName with URL $streamerUrl")
-        for (relay in relays) {
-            if (relay.uiStreamerName == streamerName) {
+        val existingRelay = relays.find { relay -> relay.uiStreamerName == streamerName }
+        if (existingRelay != null) {
+            if (existingRelay.uiStreamerUrl == streamerUrl) {
                 return
             }
+            existingRelay.stop()
+            relays.remove(existingRelay)
         }
         val database = settings!!.database
         val relay = Relay()
@@ -161,6 +164,7 @@ class MainActivity : ComponentActivity() {
             { callback -> runOnUiThread { getBatteryPercentage(callback) } },
         )
         relay.uiStreamerName = streamerName
+        relay.uiStreamerUrl = streamerUrl
         relay.start()
         relay.setCellularNetwork(cellularNetwork)
         relays.add(relay)

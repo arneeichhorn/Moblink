@@ -39,6 +39,7 @@ class Relay {
     val uiStatus = mutableStateOf("")
     var uiStarted = false
     var uiStreamerName = ""
+    var uiStreamerUrl = ""
 
     fun setup(
         relayId: String,
