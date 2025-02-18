@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private var automaticButtonText = mutableStateOf("Start")
     private var automaticStatus = mutableStateOf("Not started")
     private var cellularNetwork: Network? = null
+    private var ethernetNetwork: Network? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -166,7 +167,7 @@ class MainActivity : ComponentActivity() {
         relay.uiStreamerName = streamerName
         relay.uiStreamerUrl = streamerUrl
         relay.start()
-        relay.setCellularNetwork(cellularNetwork)
+        relay.setDestinationNetwork(cellularNetwork)
         relays.add(relay)
         updateAutomaticStatus()
     }
@@ -203,7 +204,7 @@ class MainActivity : ComponentActivity() {
                 { status -> runOnUiThread { relay.uiStatus.value = status } },
                 { callback -> runOnUiThread { getBatteryPercentage(callback) } },
             )
-            relay.setCellularNetwork(cellularNetwork)
+            relay.setDestinationNetwork(cellularNetwork)
             relays.add(relay)
         }
     }
@@ -237,8 +238,14 @@ class MainActivity : ComponentActivity() {
 
     private fun cellularNetworkUpdated() {
         for (relay in relays) {
-            relay.setCellularNetwork(cellularNetwork)
+            relay.setDestinationNetwork(cellularNetwork)
         }
+    }
+
+    private fun ethernetNetworkUpdated() {
+        // for (relay in relays) {
+        //    relay.setDestinationNetwork(ethernetNetwork)
+        // }
     }
 
     private fun saveSettings() {
@@ -297,7 +304,25 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun createEthernetNetworkRequest(): NetworkCallback {
-        return object : NetworkCallback() {}
+        return object : NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                super.onAvailable(network)
+                runOnUiThread {
+                    ethernetNetwork = network
+                    ethernetNetworkUpdated()
+                    updateAutomaticStatus()
+                }
+            }
+
+            override fun onLost(network: Network) {
+                super.onLost(network)
+                runOnUiThread {
+                    ethernetNetwork = null
+                    ethernetNetworkUpdated()
+                    updateAutomaticStatus()
+                }
+            }
+        }
     }
 
     @Composable
