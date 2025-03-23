@@ -97,6 +97,9 @@ class Relay {
     fun setDestinationNetwork(network: Network?) {
         handler?.post {
             destinationNetwork = network
+            if (destinationSocket != null) {
+                reconnectSoon()
+            }
             updateStatusInternal()
         }
     }
@@ -160,7 +163,9 @@ class Relay {
         wrongPassword = false
         updateStatusInternal()
         streamerSocket?.close()
+        streamerSocket = null
         destinationSocket?.close()
+        destinationSocket = null
     }
 
     private fun updateStatusInternal() {
@@ -234,7 +239,9 @@ class Relay {
 
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
         streamerSocket?.close()
+        streamerSocket = null
         destinationSocket?.close()
+        destinationSocket = null
         if (destinationNetwork == null) {
             reconnectSoon()
             return
