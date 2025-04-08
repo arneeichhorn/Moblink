@@ -35,6 +35,7 @@ class Relay {
     private var wrongPassword = false
     private var onStatusUpdated: ((String) -> Unit)? = null
     private var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
+    private var reconnectSoonRunnable: Runnable? = null
     val uiButtonText = mutableStateOf("Start")
     val uiStatus = mutableStateOf("")
     var uiStarted = false
@@ -101,6 +102,22 @@ class Relay {
                 reconnectSoon()
             }
             updateStatusInternal()
+        }
+    }
+
+    fun streamerSocketError(socket: DatagramSocket) {
+        handler?.post {
+            if (socket == streamerSocket) {
+                reconnectSoon()
+            }
+        }
+    }
+
+    fun destinationSocketError(socket: DatagramSocket) {
+        handler?.post {
+            if (socket == destinationSocket) {
+                reconnectSoon()
+            }
         }
     }
 
@@ -190,7 +207,14 @@ class Relay {
 
     private fun reconnectSoon() {
         stopInternal()
-        handler?.postDelayed({ startInternal() }, 5000)
+        if (reconnectSoonRunnable != null) {
+            handler?.removeCallbacks(reconnectSoonRunnable!!)
+        }
+        reconnectSoonRunnable = Runnable {
+            reconnectSoonRunnable = null
+            startInternal()
+        }
+        handler?.postDelayed(reconnectSoonRunnable!!, 5000)
     }
 
     private fun getWebsocket(): WebSocket? {
@@ -247,13 +271,16 @@ class Relay {
             return
         }
         streamerSocket = DatagramSocket()
+        streamerSocket?.soTimeout = 30 * 1000
         destinationSocket = DatagramSocket()
+        destinationSocket?.soTimeout = 30 * 1000
         destinationNetwork?.bindSocket(destinationSocket)
         startStreamerReceiver(
             streamerSocket!!,
             destinationSocket!!,
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
+            this
         )
         val data = ResponseData(StartTunnelResponse(streamerSocket!!.localPort), null)
         val response = Response(id, Result(Present(), null), data)
@@ -282,6 +309,7 @@ private fun startStreamerReceiver(
     destinationSocket: DatagramSocket,
     destinationAddress: InetAddress,
     destinationPort: Int,
+    relay: Relay?
 ) {
     thread {
         var destinationReceiverStarted = false
@@ -296,6 +324,7 @@ private fun startStreamerReceiver(
                         destinationSocket,
                         packet.address,
                         packet.port,
+                        relay
                     )
                     destinationReceiverStarted = true
                 }
@@ -303,7 +332,10 @@ private fun startStreamerReceiver(
                 packet.port = destinationPort
                 destinationSocket.send(packet)
             }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            log("Streamer receiver error $error")
+            relay?.streamerSocketError(streamerSocket)
+        }
     }
 }
 
@@ -312,6 +344,7 @@ private fun startDestinationReceiver(
     destinationSocket: DatagramSocket,
     streamerAddress: InetAddress,
     streamerPort: Int,
+    relay: Relay?
 ) {
     thread {
         val buffer = ByteArray(2048)
@@ -323,7 +356,10 @@ private fun startDestinationReceiver(
                 packet.port = streamerPort
                 streamerSocket.send(packet)
             }
-        } catch (_: Exception) {}
+        } catch (error: Exception) {
+            log("Destination receiver error $error")
+            relay?.destinationSocketError(destinationSocket)
+        }
     }
 }
 
