@@ -280,7 +280,7 @@ class Relay {
             destinationSocket!!,
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
-            this
+            this,
         )
         val data = ResponseData(StartTunnelResponse(streamerSocket!!.localPort), null)
         val response = Response(id, Result(Present(), null), data)
@@ -309,7 +309,7 @@ private fun startStreamerReceiver(
     destinationSocket: DatagramSocket,
     destinationAddress: InetAddress,
     destinationPort: Int,
-    relay: Relay?
+    relay: Relay?,
 ) {
     thread {
         var destinationReceiverStarted = false
@@ -324,7 +324,7 @@ private fun startStreamerReceiver(
                         destinationSocket,
                         packet.address,
                         packet.port,
-                        relay
+                        relay,
                     )
                     destinationReceiverStarted = true
                 }
@@ -344,7 +344,7 @@ private fun startDestinationReceiver(
     destinationSocket: DatagramSocket,
     streamerAddress: InetAddress,
     streamerPort: Int,
-    relay: Relay?
+    relay: Relay?,
 ) {
     thread {
         val buffer = ByteArray(2048)
