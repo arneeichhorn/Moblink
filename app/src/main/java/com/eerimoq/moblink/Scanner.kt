@@ -17,13 +17,13 @@ class Scanner(
     private var pendingResolves: MutableMap<String, Resolve> = mutableMapOf()
 
     fun start() {
-        log("Scanner start")
+        logger.log("Scanner start")
         listener = createNsdListenerCallback()
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
     }
 
     fun stop() {
-        log("Scanner stop")
+        logger.log("Scanner stop")
         if (listener != null) {
             nsdManager.stopServiceDiscovery(listener)
             listener = null
@@ -35,14 +35,14 @@ class Scanner(
             override fun onDiscoveryStarted(regType: String) {}
 
             override fun onServiceFound(service: NsdServiceInfo) {
-                log("Service found: ${service.serviceName}")
+                logger.log("Service found: ${service.serviceName}")
                 val resolve = Resolve()
                 nsdManager.resolveService(service, createResolveCallback(resolve))
                 pendingResolves.replace(service.serviceName, resolve)?.cancelled = true
             }
 
             override fun onServiceLost(service: NsdServiceInfo) {
-                log("Service lost ${service.serviceName}")
+                logger.log("Service lost ${service.serviceName}")
                 pendingResolves.remove(service.serviceName)?.cancelled = true
                 onLost(service.serviceName)
             }
@@ -65,7 +65,7 @@ class Scanner(
 
             override fun onServiceResolved(service: NsdServiceInfo) {
                 if (resolve.cancelled) {
-                    log("Service resolve cancelled ${service.serviceName}")
+                    logger.log("Service resolve cancelled ${service.serviceName}")
                     return
                 }
                 val address =

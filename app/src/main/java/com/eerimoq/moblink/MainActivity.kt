@@ -1,5 +1,7 @@
 package com.eerimoq.moblink
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.ConnectivityManager.NetworkCallback
@@ -100,6 +102,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startAutomatic() {
+        logger.log("Start automatic")
         if (automaticStarted) {
             return
         }
@@ -120,6 +123,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopAutomatic() {
+        logger.log("Stop automatic")
         if (!automaticStarted) {
             return
         }
@@ -137,7 +141,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleStreamerFound(streamerName: String, streamerUrl: String) {
-        log("Found streamer $streamerName with URL $streamerUrl")
+        logger.log("Found streamer $streamerName with URL $streamerUrl")
         val existingRelay = relays.find { relay -> relay.uiStreamerName == streamerName }
         if (existingRelay != null) {
             if (existingRelay.uiStreamerUrl == streamerUrl) {
@@ -173,7 +177,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleStreamerLost(streamerName: String) {
-        log("Lost streamer $streamerName")
+        logger.log("Lost streamer $streamerName")
     }
 
     private fun updateAutomaticStatus() {
@@ -190,9 +194,11 @@ class MainActivity : ComponentActivity() {
             } else {
                 "Searching for streamers"
             }
+        logger.log("Automatic status: ${automaticStatus.value}")
     }
 
     private fun setupManual() {
+        logger.log("Setup manual")
         val database = settings!!.database
         for (relaySettings in database.relays) {
             val relay = Relay()
@@ -210,6 +216,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun teardownManual() {
+        logger.log("Teardown manual")
         for (relay in relays) {
             relay.stop()
         }
@@ -234,6 +241,12 @@ class MainActivity : ComponentActivity() {
 
     private fun isStartedManual(): Boolean {
         return relays.any { it.uiStarted }
+    }
+
+    private fun copyLogToClipboard() {
+        val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("log.txt", logger.formatLog())
+        clipboard.setPrimaryClip(clip)
     }
 
     private fun cellularNetworkUpdated() {
@@ -282,6 +295,7 @@ class MainActivity : ComponentActivity() {
             override fun onAvailable(network: Network) {
                 super.onAvailable(network)
                 runOnUiThread {
+                    logger.log("Cellular network available")
                     cellularNetwork = network
                     cellularNetworkUpdated()
                     updateAutomaticStatus()
@@ -291,6 +305,7 @@ class MainActivity : ComponentActivity() {
             override fun onLost(network: Network) {
                 super.onLost(network)
                 runOnUiThread {
+                    logger.log("Cellular network lost")
                     cellularNetwork = null
                     cellularNetworkUpdated()
                     updateAutomaticStatus()
@@ -358,6 +373,7 @@ class MainActivity : ComponentActivity() {
             } else {
                 Automatic()
             }
+            CopyLog()
             Text("Version $version")
             Spacer(modifier = Modifier.fillMaxHeight())
         }
@@ -528,6 +544,13 @@ class MainActivity : ComponentActivity() {
             },
         ) {
             Text(text)
+        }
+    }
+
+    @Composable
+    fun CopyLog() {
+        Button(modifier = Modifier.padding(bottom = 10.dp), onClick = { copyLogToClipboard() }) {
+            Text("Copy log")
         }
     }
 }

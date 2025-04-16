@@ -50,6 +50,7 @@ class Relay {
         onStatusUpdated: (String) -> Unit,
         getBatteryPercentage: ((Int) -> Unit) -> Unit,
     ) {
+        logger.log("$streamerUrl: Setup")
         this.onStatusUpdated = onStatusUpdated
         this.getBatteryPercentage = getBatteryPercentage
         handlerThread.start()
@@ -64,6 +65,7 @@ class Relay {
     }
 
     fun start() {
+        logger.log("$streamerUrl: Start")
         uiStarted = true
         uiButtonText.value = "Stop"
         handler?.post {
@@ -75,6 +77,7 @@ class Relay {
     }
 
     fun stop() {
+        logger.log("$streamerUrl: Stop")
         uiStarted = false
         uiButtonText.value = "Start"
         handler?.post {
@@ -99,7 +102,11 @@ class Relay {
         handler?.post {
             destinationNetwork = network
             if (destinationSocket != null) {
-                reconnectSoon()
+                if (network != null) {
+                    reconnectSoon("Destination network available")
+                } else {
+                    reconnectSoon("Destination network lost")
+                }
             }
             updateStatusInternal()
         }
@@ -108,7 +115,7 @@ class Relay {
     fun streamerSocketError(socket: DatagramSocket) {
         handler?.post {
             if (socket == streamerSocket) {
-                reconnectSoon()
+                reconnectSoon("Streamer socket error")
             }
         }
     }
@@ -116,13 +123,14 @@ class Relay {
     fun destinationSocketError(socket: DatagramSocket) {
         handler?.post {
             if (socket == destinationSocket) {
-                reconnectSoon()
+                reconnectSoon("Destination socket error")
             }
         }
     }
 
     private fun startInternal() {
         stopInternal()
+        logger.log("$streamerUrl: Start internal when started: $started")
         if (!started) {
             return
         }
@@ -130,7 +138,7 @@ class Relay {
             try {
                 Request.Builder().url(streamerUrl).build()
             } catch (e: Exception) {
-                log("Failed to build URL: $e")
+                logger.log("$streamerUrl: Failed to build URL: $e")
                 return
             }
         webSocket =
@@ -150,8 +158,7 @@ class Relay {
                         super.onClosed(webSocket, code, reason)
                         handler?.post {
                             if (webSocket === getWebsocket()) {
-                                log("Websocket closed $reason (code $code)")
-                                reconnectSoon()
+                                reconnectSoon("Websocket closed $reason (code $code)")
                             }
                         }
                     }
@@ -164,8 +171,7 @@ class Relay {
                         super.onFailure(webSocket, t, response)
                         handler?.post {
                             if (webSocket === getWebsocket()) {
-                                log("Websocket failure $t")
-                                reconnectSoon()
+                                reconnectSoon("Websocket failure $t")
                             }
                         }
                     }
@@ -174,6 +180,7 @@ class Relay {
     }
 
     private fun stopInternal() {
+        logger.log("$streamerUrl: Stop internal")
         webSocket?.cancel()
         webSocket = null
         connected = false
@@ -202,10 +209,12 @@ class Relay {
             } else {
                 "Disconnected from streamer"
             }
+        logger.log("$streamerUrl: Status: $status")
         onStatusUpdated?.let { it(status) }
     }
 
-    private fun reconnectSoon() {
+    private fun reconnectSoon(reason: String) {
+        logger.log("$streamerUrl: Reconnect soon with reason: $reason")
         stopInternal()
         if (reconnectSoonRunnable != null) {
             handler?.removeCallbacks(reconnectSoonRunnable!!)
@@ -232,12 +241,12 @@ class Relay {
                 handleMessageRequest(message.request)
             }
         } catch (e: Exception) {
-            log("Message handling failed: $e")
-            reconnectSoon()
+            reconnectSoon("Message handling failed: $e")
         }
     }
 
     private fun handleMessageHello(hello: Hello) {
+        logger.log("$streamerUrl: Got hello: $hello")
         var concatenated = "$password${hello.authentication.salt}"
         concatenated = "${base64Encode(calcSha256(concatenated))}${hello.authentication.challenge}"
         val identify = Identify(relayId, name, base64Encode(calcSha256(concatenated)))
@@ -262,12 +271,13 @@ class Relay {
     }
 
     private fun handleMessageStartTunnelRequest(id: Int, startTunnel: StartTunnelRequest) {
+        logger.log("$streamerUrl: Got start tunnel: $startTunnel")
         streamerSocket?.close()
         streamerSocket = null
         destinationSocket?.close()
         destinationSocket = null
         if (destinationNetwork == null) {
-            reconnectSoon()
+            reconnectSoon("Start tunnel without destination network")
             return
         }
         streamerSocket = DatagramSocket()
@@ -281,6 +291,7 @@ class Relay {
             InetAddress.getByName(startTunnel.address),
             startTunnel.port,
             this,
+            streamerUrl,
         )
         val data = ResponseData(StartTunnelResponse(streamerSocket!!.localPort), null)
         val response = Response(id, Result(Present(), null), data)
@@ -310,6 +321,7 @@ private fun startStreamerReceiver(
     destinationAddress: InetAddress,
     destinationPort: Int,
     relay: Relay?,
+    streamerUrl: String,
 ) {
     thread {
         var destinationReceiverStarted = false
@@ -325,6 +337,7 @@ private fun startStreamerReceiver(
                         packet.address,
                         packet.port,
                         relay,
+                        streamerUrl,
                     )
                     destinationReceiverStarted = true
                 }
@@ -333,7 +346,7 @@ private fun startStreamerReceiver(
                 destinationSocket.send(packet)
             }
         } catch (error: Exception) {
-            log("Streamer receiver error $error")
+            logger.log("$streamerUrl: Streamer receiver error $error")
             relay?.streamerSocketError(streamerSocket)
         }
     }
@@ -345,6 +358,7 @@ private fun startDestinationReceiver(
     streamerAddress: InetAddress,
     streamerPort: Int,
     relay: Relay?,
+    streamerUrl: String,
 ) {
     thread {
         val buffer = ByteArray(2048)
@@ -357,7 +371,7 @@ private fun startDestinationReceiver(
                 streamerSocket.send(packet)
             }
         } catch (error: Exception) {
-            log("Destination receiver error $error")
+            logger.log("$streamerUrl: Destination receiver error $error")
             relay?.destinationSocketError(destinationSocket)
         }
     }
