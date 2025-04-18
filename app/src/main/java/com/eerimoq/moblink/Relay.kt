@@ -36,6 +36,8 @@ class Relay {
     private var onStatusUpdated: ((String) -> Unit)? = null
     private var getBatteryPercentage: (((Int) -> Unit) -> Unit)? = null
     private var reconnectSoonRunnable: Runnable? = null
+    private var streamerAddress: InetAddress? = null
+    private var streamerPort: Int? = null
     val uiButtonText = mutableStateOf("Start")
     val uiStatus = mutableStateOf("")
     var uiStarted = false
@@ -330,12 +332,12 @@ private fun startStreamerReceiver(
         try {
             while (true) {
                 streamerSocket.receive(packet)
+                relay?.streamerAddress = packet.address
+                relay?.streamerPort = packet.port
                 if (!destinationReceiverStarted) {
                     startDestinationReceiver(
                         streamerSocket,
                         destinationSocket,
-                        packet.address,
-                        packet.port,
                         relay,
                         streamerUrl,
                     )
@@ -355,8 +357,6 @@ private fun startStreamerReceiver(
 private fun startDestinationReceiver(
     streamerSocket: DatagramSocket,
     destinationSocket: DatagramSocket,
-    streamerAddress: InetAddress,
-    streamerPort: Int,
     relay: Relay?,
     streamerUrl: String,
 ) {
@@ -366,8 +366,8 @@ private fun startDestinationReceiver(
         try {
             while (true) {
                 destinationSocket.receive(packet)
-                packet.address = streamerAddress
-                packet.port = streamerPort
+                packet.address = relay?.streamerAddress
+                packet.port = relay?.streamerPort
                 streamerSocket.send(packet)
             }
         } catch (error: Exception) {
